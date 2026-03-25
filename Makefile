@@ -1,4 +1,4 @@
-.PHONY: up down down-v ps logs seed lint format test verify install train
+.PHONY: up down down-v ps logs seed lint format test verify install train pipeline pipeline-serve
 
 # ---------------------------------------------------------------------------
 # Docker Compose
@@ -43,6 +43,12 @@ install:
 # ---------------------------------------------------------------------------
 train:
 	uv run python -m src.training.train
+
+pipeline:
+	uv run python -m src.orchestration.serve --run-once
+
+pipeline-serve:
+	uv run python -m src.orchestration.serve
 
 # ---------------------------------------------------------------------------
 # Code Quality
