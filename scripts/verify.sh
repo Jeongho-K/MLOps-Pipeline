@@ -2,7 +2,7 @@
 # Verify Phase 1 infrastructure is working correctly.
 # Run after `make up` when all services are healthy.
 
-set -e
+set -eu
 
 PASS=0
 FAIL=0
@@ -10,11 +10,13 @@ FAIL=0
 check() {
     local name="$1"
     local cmd="$2"
-    if eval "$cmd" > /dev/null 2>&1; then
-        echo "  ✓ $name"
+    local output
+    if output=$(eval "$cmd" 2>&1); then
+        echo "  [PASS] $name"
         PASS=$((PASS + 1))
     else
-        echo "  ✗ $name"
+        echo "  [FAIL] $name"
+        echo "         Error: $output"
         FAIL=$((FAIL + 1))
     fi
 }
@@ -36,10 +38,9 @@ check "prefect database exists" "docker compose exec postgres psql -U ${POSTGRES
 
 echo ""
 echo "[MinIO Buckets]"
-MC_CHECK="docker compose run --rm --entrypoint sh minio-init -c 'mc alias set myminio http://minio:9000 \${MINIO_ROOT_USER} \${MINIO_ROOT_PASSWORD} > /dev/null 2>&1 && mc ls myminio/BUCKET > /dev/null 2>&1'"
-check "mlflow-artifacts bucket" "$(echo "$MC_CHECK" | sed 's/BUCKET/mlflow-artifacts/')"
-check "dvc-storage bucket" "$(echo "$MC_CHECK" | sed 's/BUCKET/dvc-storage/')"
-check "model-registry bucket" "$(echo "$MC_CHECK" | sed 's/BUCKET/model-registry/')"
+check "mlflow-artifacts bucket" "docker compose run --rm --entrypoint sh minio-init -c 'mc alias set myminio http://minio:9000 \${MINIO_ROOT_USER} \${MINIO_ROOT_PASSWORD} && mc ls myminio/mlflow-artifacts'"
+check "dvc-storage bucket" "docker compose run --rm --entrypoint sh minio-init -c 'mc alias set myminio http://minio:9000 \${MINIO_ROOT_USER} \${MINIO_ROOT_PASSWORD} && mc ls myminio/dvc-storage'"
+check "model-registry bucket" "docker compose run --rm --entrypoint sh minio-init -c 'mc alias set myminio http://minio:9000 \${MINIO_ROOT_USER} \${MINIO_ROOT_PASSWORD} && mc ls myminio/model-registry'"
 
 echo ""
 echo "[UI Accessibility]"

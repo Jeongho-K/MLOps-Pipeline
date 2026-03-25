@@ -2,32 +2,48 @@
 # Initialize MLOps Pipeline with default MLflow experiments and verify service health.
 # Run after `make up` when all services are healthy.
 
-set -e
+set -eu
 
 echo "=== MLOps Pipeline Seed Data ==="
 
-# Check that required services are healthy
+# Check that ALL required services are healthy
 echo "[1/3] Checking services..."
 for svc in postgres minio mlflow prefect-server redis; do
     if ! docker compose ps "$svc" --format "{{.Status}}" 2>/dev/null | grep -q "healthy"; then
         echo "Error: $svc is not healthy. Run 'make up' first and wait for services to start."
         exit 1
     fi
+    echo "  $svc: healthy"
 done
-echo "  All required services are healthy."
 
 # Create MLflow experiment
 echo "[2/3] Creating MLflow experiment..."
-docker compose exec mlflow mlflow experiments create --experiment-name "default-classification" 2>/dev/null || {
-    echo "  MLflow experiment already exists or MLflow not ready. Skipping."
+OUTPUT=$(docker compose exec mlflow mlflow experiments create --experiment-name "default-classification" 2>&1) && {
+    echo "  MLflow experiment 'default-classification' created."
+} || {
+    if echo "$OUTPUT" | grep -qi "already exists\|RESOURCE_ALREADY_EXISTS"; then
+        echo "  MLflow experiment already exists. Skipping."
+    else
+        echo "  ERROR: Failed to create MLflow experiment:"
+        echo "  $OUTPUT"
+        exit 1
+    fi
 }
 
-echo "[3/3] Verifying services..."
-echo "  PostgreSQL: $(docker compose exec postgres psql -U ${POSTGRES_USER:-mlops} -lqt 2>/dev/null | grep -c 'mlflow\|prefect') databases found"
-echo "  MinIO: $(curl -sf http://localhost:${MINIO_API_PORT:-9000}/minio/health/live && echo 'OK' || echo 'UNREACHABLE')"
-echo "  MLflow: $(curl -sf http://localhost:${MLFLOW_PORT:-5000}/health && echo 'OK' || echo 'UNREACHABLE')"
-echo "  Prefect: $(curl -sf http://localhost:${PREFECT_PORT:-4200}/api/health && echo 'OK' || echo 'UNREACHABLE')"
-echo "  Redis: $(docker compose exec redis redis-cli ping 2>/dev/null || echo 'UNREACHABLE')"
+# Verify services are accessible
+echo "[3/3] Verifying service accessibility..."
+VERIFY_FAIL=0
+
+curl -sf http://localhost:${MLFLOW_PORT:-5000}/health > /dev/null && echo "  MLflow: OK" || { echo "  MLflow: UNREACHABLE"; VERIFY_FAIL=1; }
+curl -sf http://localhost:${PREFECT_PORT:-4200}/api/health > /dev/null && echo "  Prefect: OK" || { echo "  Prefect: UNREACHABLE"; VERIFY_FAIL=1; }
+curl -sf http://localhost:${MINIO_API_PORT:-9000}/minio/health/live > /dev/null && echo "  MinIO: OK" || { echo "  MinIO: UNREACHABLE"; VERIFY_FAIL=1; }
+docker compose exec redis redis-cli ping > /dev/null 2>&1 && echo "  Redis: OK" || { echo "  Redis: UNREACHABLE"; VERIFY_FAIL=1; }
+
+if [ "$VERIFY_FAIL" -gt 0 ]; then
+    echo ""
+    echo "ERROR: Some services are unreachable. Run 'make verify' for details."
+    exit 1
+fi
 
 echo ""
 echo "=== Seed complete ==="
