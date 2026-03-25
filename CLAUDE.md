@@ -5,6 +5,20 @@
 General-purpose CV MLOps pipeline template for on-premises deployment.
 Supports image classification, detection, and segmentation workflows.
 
+## Quick Start
+
+```bash
+cp .env.example .env          # Configure environment (adjust ports if needed)
+make up                       # Start all services
+make seed                     # Initialize buckets + MLflow experiment
+make verify                   # 13-point health check
+```
+
+Services after `make up`:
+- MLflow UI: http://localhost:5000 (or `$MLFLOW_PORT`)
+- Prefect UI: http://localhost:4200
+- MinIO Console: http://localhost:9001 (minioadmin / minioadmin123)
+
 ## Architecture (6 Layers)
 
 ```
@@ -20,19 +34,20 @@ Layer 1: Infrastructure— Docker Compose, PostgreSQL, MinIO, Redis
 
 ## Tech Stack (Pinned Versions)
 
-| Component | Version / Image |
-|---|---|
-| PostgreSQL | `postgres:16.6-alpine` |
-| MinIO | `minio/minio:RELEASE.2025-09-07T16-13-09Z` |
-| MLflow | `ghcr.io/mlflow/mlflow:v3.10.1` |
-| Prefect | `prefecthq/prefect:3.6.23-python3.11` |
-| Redis | `redis:7.4-alpine` |
-| Nginx | `nginx:1.28.2-alpine` |
-| Prometheus | `prom/prometheus:v3.10.0` |
-| Grafana | `grafana/grafana-oss:12.4.1` |
-| Python | 3.11.x |
-| PyTorch | 2.6.x |
-| CUDA | `nvidia/cuda:12.6.3-runtime-ubuntu22.04` |
+| Component | Version / Image | Notes |
+|---|---|---|
+| PostgreSQL | `postgres:16.6-alpine` | |
+| MinIO Server | `minio/minio:RELEASE.2025-09-07T16-13-09Z` | |
+| MinIO Client | `minio/mc:RELEASE.2025-08-13T08-35-41Z` | Bucket init only |
+| MLflow | `docker/mlflow/Dockerfile` (base: `ghcr.io/mlflow/mlflow:v3.10.1`) | Custom build: +psycopg2-binary +boto3 |
+| Prefect | `prefecthq/prefect:3.6.23-python3.11` | Requires explicit `command` |
+| Redis | `redis:7.4-alpine` | |
+| Nginx | `nginx:1.28.2-alpine` | Phase 5 |
+| Prometheus | `prom/prometheus:v3.10.0` | Phase 6 |
+| Grafana | `grafana/grafana-oss:12.4.1` | Phase 6 |
+| Python | 3.11.x | |
+| PyTorch | 2.6.x | Phase 3 |
+| CUDA | `nvidia/cuda:12.6.3-runtime-ubuntu22.04` | Phase 3 |
 
 ## Coding Standards
 
@@ -136,3 +151,11 @@ MLOps-Pipeline/
 | `make test-integration` | Run integration tests |
 | `make test-e2e` | Run end-to-end tests |
 | `make verify` | Run Phase verification checks |
+
+## Gotchas
+
+- **Port 5000 충돌**: macOS ControlCenter가 5000 사용. `.env`에서 `MLFLOW_PORT=5050`으로 변경
+- **MLflow + PostgreSQL**: 공식 MLflow 이미지에 `psycopg2` 미포함 → `docker/mlflow/Dockerfile`로 커스텀 빌드 필수
+- **Prefect 서버 시작**: 이미지 기본 entrypoint가 서버를 시작하지 않음 → `command: prefect server start --host 0.0.0.0 --port 4200` 필수
+- **MinIO mc 이미지**: `minio/minio` 서버 이미지에 `mc` CLI 미포함. 버킷 작업은 별도 `minio/mc` 이미지 사용
+- **DB 초기화 스크립트**: `scripts/create-multiple-databases.sh`는 볼륨이 비어있을 때만 실행. DB 추가 시 `make down-v` 필요
