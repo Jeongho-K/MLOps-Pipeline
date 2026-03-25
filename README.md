@@ -45,6 +45,3 @@ make ps
 | 모니터링 | Evidently, Prometheus, Grafana |
 | DB | PostgreSQL, MinIO, Redis |
 
-## 라이선스
-
-모든 구성 요소는 상용 판매가 가능한 라이선스를 사용합니다.

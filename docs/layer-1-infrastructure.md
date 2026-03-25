@@ -43,7 +43,7 @@ graph TB
   - `model-registry` — 프로덕션 모델 저장
 - **볼륨:** `minio_data:/data`
 
-> **참고:** MinIO Docker 이미지는 2025년 10월에 중단되었습니다. 최후의 안정 태그를 고정하여 사용하며, 추후 SeaweedFS(Apache 2.0)로 마이그레이션이 가능합니다 (S3 프로토콜 호환).
+> **참고:** MinIO Docker 이미지는 2025년 10월에 중단되었습니다. 최후의 안정 태그를 고정하여 사용하며, 추후 SeaweedFS로 마이그레이션이 가능합니다 (S3 프로토콜 호환).
 
 ### MLflow Server
 

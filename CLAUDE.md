@@ -20,21 +20,19 @@ Layer 1: Infrastructure— Docker Compose, PostgreSQL, MinIO, Redis
 
 ## Tech Stack (Pinned Versions)
 
-| Component | Version / Image | License |
-|---|---|---|
-| PostgreSQL | `postgres:16.6-alpine` | PostgreSQL |
-| MinIO | `minio/minio:RELEASE.2025-09-07T16-13-09Z` | AGPL v3 (service use) |
-| MLflow | `ghcr.io/mlflow/mlflow:v3.10.1` | Apache 2.0 |
-| Prefect | `prefecthq/prefect:3.6.23-python3.11` | Apache 2.0 |
-| Redis | `redis:7.4-alpine` | BSD 3-Clause |
-| Nginx | `nginx:1.28.2-alpine` | BSD 2-Clause |
-| Prometheus | `prom/prometheus:v3.10.0` | Apache 2.0 |
-| Grafana | `grafana/grafana-oss:12.4.1` | AGPL v3 (service use) |
-| Python | 3.11.x | PSF |
-| PyTorch | 2.6.x | BSD 3-Clause |
-| CUDA | `nvidia/cuda:12.6.3-runtime-ubuntu22.04` | NVIDIA EULA |
-
-All licenses are compatible with commercial sale. AGPL services (MinIO, Grafana) are used as standalone services via API, not embedded.
+| Component | Version / Image |
+|---|---|
+| PostgreSQL | `postgres:16.6-alpine` |
+| MinIO | `minio/minio:RELEASE.2025-09-07T16-13-09Z` |
+| MLflow | `ghcr.io/mlflow/mlflow:v3.10.1` |
+| Prefect | `prefecthq/prefect:3.6.23-python3.11` |
+| Redis | `redis:7.4-alpine` |
+| Nginx | `nginx:1.28.2-alpine` |
+| Prometheus | `prom/prometheus:v3.10.0` |
+| Grafana | `grafana/grafana-oss:12.4.1` |
+| Python | 3.11.x |
+| PyTorch | 2.6.x |
+| CUDA | `nvidia/cuda:12.6.3-runtime-ubuntu22.04` |
 
 ## Coding Standards
 
