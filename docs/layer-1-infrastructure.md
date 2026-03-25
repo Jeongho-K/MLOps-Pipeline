@@ -72,6 +72,7 @@ graph LR
     PG[PostgreSQL] --> MLF[MLflow]
     PG --> PF[Prefect]
     MIO[MinIO] --> MI[minio-init]
+    MIO --> MLF
     MI --> MLF
     RD[Redis] --> PF
 ```
@@ -85,7 +86,7 @@ graph LR
 
 | 변수 | 기본값 | 설명 |
 |------|--------|------|
-| `POSTGRES_USER` | `mlops` | PostgreSQL 사용자 |
+| `POSTGRES_USER` | `mlops` | PostgreSQL 사용자 (기본 DB명으로도 사용됨) |
 | `POSTGRES_PASSWORD` | `mlops_secret` | PostgreSQL 비밀번호 |
 | `POSTGRES_PORT` | `5432` | PostgreSQL 포트 |
 | `MINIO_ROOT_USER` | `minioadmin` | MinIO 관리자 ID |
