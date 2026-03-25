@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Any
 
 from prefect import task
 
@@ -40,7 +41,7 @@ def prepare_dataset(data_dir: str) -> Path:
 
 
 @task(name="validate-images", retries=1, retry_delay_seconds=10)
-def validate_images(data_dir: str) -> dict[str, float]:
+def validate_images(data_dir: str) -> dict[str, Any]:
     """Run CleanVision image quality validation.
 
     Args:
