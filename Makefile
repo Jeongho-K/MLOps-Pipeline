@@ -1,4 +1,4 @@
-.PHONY: up down down-v ps logs seed lint format test verify
+.PHONY: up down down-v ps logs seed lint format test verify install
 
 # ---------------------------------------------------------------------------
 # Docker Compose
@@ -33,22 +33,28 @@ verify:
 	bash scripts/verify.sh
 
 # ---------------------------------------------------------------------------
+# Dependencies (uv)
+# ---------------------------------------------------------------------------
+install:
+	uv sync
+
+# ---------------------------------------------------------------------------
 # Code Quality
 # ---------------------------------------------------------------------------
 lint:
-	ruff check src/ tests/
+	uv run ruff check src/ tests/
 
 format:
-	ruff format src/ tests/
+	uv run ruff format src/ tests/
 
 # ---------------------------------------------------------------------------
 # Testing
 # ---------------------------------------------------------------------------
 test:
-	pytest tests/unit/ -v
+	uv run pytest tests/unit/ -v
 
 test-integration:
-	pytest tests/integration/ -v
+	uv run pytest tests/integration/ -v
 
 test-e2e:
-	pytest tests/e2e/ -v
+	uv run pytest tests/e2e/ -v

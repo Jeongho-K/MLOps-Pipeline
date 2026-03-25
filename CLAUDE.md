@@ -8,6 +8,7 @@ Supports image classification, detection, and segmentation workflows.
 ## Quick Start
 
 ```bash
+uv sync                       # Install Python dependencies
 cp .env.example .env          # Configure environment (adjust ports if needed)
 make up                       # Start all services
 make seed                     # Initialize buckets + MLflow experiment
@@ -52,6 +53,7 @@ Layer 1: Infrastructure— Docker Compose, PostgreSQL, MinIO, Redis
 ## Coding Standards
 
 - **Python**: 3.11+, type hints required on all function signatures
+- **Package manager**: uv (`uv sync`, `uv run`)
 - **Linter/Formatter**: Ruff (config in `pyproject.toml`)
 - **Config management**: Pydantic Settings (`.env` → typed dataclass)
 - **Docstrings**: Google style, in English
@@ -139,6 +141,7 @@ MLOps-Pipeline/
 
 | Command | Description |
 |---|---|
+| `make install` | Install dependencies (uv sync) |
 | `make up` | Start all services |
 | `make down` | Stop all services |
 | `make down-v` | Stop and destroy volumes |

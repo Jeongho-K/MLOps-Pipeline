@@ -213,9 +213,10 @@ __marimo__/
 # Docker volumes (if mounted locally)
 docker-volumes/
 
-# Data directories
-data/
-!data/.gitkeep
+# Data directories (actual datasets, not source code)
+data/raw/*/
+data/processed/
+!data/raw/.gitkeep
 
 # MLflow local artifacts
 mlruns/
