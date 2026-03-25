@@ -205,3 +205,33 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# =============================================================================
+# MLOps Pipeline specific
+# =============================================================================
+
+# Docker volumes (if mounted locally)
+docker-volumes/
+
+# Data directories
+data/
+!data/.gitkeep
+
+# MLflow local artifacts
+mlruns/
+mlartifacts/
+
+# DVC
+/dvc-storage/
+dvc.lock
+
+# Model files
+*.pt
+*.pth
+*.onnx
+*.tflite
+*.bin
+
+# Logs
+logs/
+*.log
