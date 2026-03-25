@@ -32,8 +32,8 @@ def prepare_dataset(data_dir: str) -> Path:
     if not train_dir.exists() or not val_dir.exists():
         raise FileNotFoundError(f"Dataset must contain 'train/' and 'val/' subdirectories: {path}")
 
-    train_count = sum(1 for _ in train_dir.rglob("*") if _.is_file())
-    val_count = sum(1 for _ in val_dir.rglob("*") if _.is_file())
+    train_count = sum(1 for p in train_dir.rglob("*") if p.is_file())
+    val_count = sum(1 for p in val_dir.rglob("*") if p.is_file())
     logger.info("Dataset ready: %d train, %d val images at %s", train_count, val_count, path)
 
     return path

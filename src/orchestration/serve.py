@@ -41,8 +41,7 @@ def main() -> None:
     args = parser.parse_args()
 
     # Set Prefect API URL for connecting to the server
-    prefect_api_url = os.environ.get("PREFECT_API_URL", "http://localhost:4200/api")
-    os.environ["PREFECT_API_URL"] = prefect_api_url
+    os.environ.setdefault("PREFECT_API_URL", "http://localhost:4200/api")
 
     params = {
         "data_dir": args.data_dir,
