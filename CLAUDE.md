@@ -43,7 +43,8 @@ Layer 1: Infrastructure— Docker Compose, PostgreSQL, MinIO, Redis
 | MLflow | `docker/mlflow/Dockerfile` (base: `ghcr.io/mlflow/mlflow:v3.10.1`) | Custom build: +psycopg2-binary +boto3 |
 | Prefect | `prefecthq/prefect:3.6.23-python3.11` | Requires explicit `command` |
 | Redis | `redis:7.4-alpine` | |
-| Nginx | `nginx:1.28.2-alpine` | Phase 5 |
+| Nginx | `nginx:1.28.1-alpine` | Phase 5 |
+| FastAPI | `fastapi>=0.115` + `uvicorn>=0.30` + `gunicorn>=22.0` | Phase 5 |
 | Prometheus | `prom/prometheus:v3.10.0` | Phase 6 |
 | Grafana | `grafana/grafana-oss:12.4.1` | Phase 6 |
 | Python | 3.11.x | |
@@ -75,18 +76,6 @@ Layer 1: Infrastructure— Docker Compose, PostgreSQL, MinIO, Redis
 - **Commit messages**: English, conventional commits (`feat:`, `fix:`, `docs:`, `infra:`, `test:`, `refactor:`)
 - **Branches**: `feature/phase-{N}-{name}`, `fix/{description}`
 
-## Git Workflow
-
-- Phase-based branches → PR to main
-- PR review cycle (모든 단계 통과 시 머지):
-  1. **코드 리뷰** — 7인 서브에이전트 병렬 실행:
-     - code-reviewer, silent-failure-hunter, comment-analyzer, code-simplifier
-     - type-design-analyzer, pr-test-analyzer, feature-dev:code-reviewer
-     - superpowers:code-reviewer, feature-dev:code-explorer
-  2. 발견된 이슈 수정 → 재리뷰 (모든 리뷰어 통과할 때까지 반복)
-  3. **QC 테스트** — 실제 서비스를 올리고 유저 입장에서 E2E 동작 검증 (서비스 기동, API 호출, UI 접속 등)
-  4. QC 이슈 발견 시 수정 → 재 QC (통과할 때까지 반복)
-  5. 모든 리뷰 + QC 통과 → 머지
 
 ## Testing
 

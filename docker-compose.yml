@@ -137,6 +137,57 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # ---------------------------------------------------------------------------
+  # Inference API - FastAPI with Gunicorn/Uvicorn (Phase 5)
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: docker/serving/Dockerfile
+    image: mlops-pipeline/api:latest
+    environment:
+      SERVING_MODEL_NAME: ${SERVING_MODEL_NAME:-cv-classifier}
+      SERVING_MODEL_VERSION: ${SERVING_MODEL_VERSION:-latest}
+      SERVING_MLFLOW_TRACKING_URI: http://mlflow:5000
+      SERVING_DEVICE: ${SERVING_DEVICE:-auto}
+      SERVING_IMAGE_SIZE: ${SERVING_IMAGE_SIZE:-224}
+      SERVING_CLASS_NAMES: ${SERVING_CLASS_NAMES:-}
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-2}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Nginx - Reverse proxy for inference API (Phase 5)
+  # ---------------------------------------------------------------------------
+  nginx:
+    build:
+      context: .
+      dockerfile: docker/nginx/Dockerfile
+    image: mlops-pipeline/nginx:1.28.1-alpine
+    ports:
+      - "${NGINX_PORT:-80}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/nginx/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   minio_data:

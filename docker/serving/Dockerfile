@@ -1,18 +1,50 @@
-# Serving image - FastAPI with Gunicorn/Uvicorn
-# Phase 5: Model inference API
+# Serving image — FastAPI inference API with Gunicorn + Uvicorn workers
+# Phase 5: Model inference serving
 
-# --- Stage 1: Base ---
-FROM python:3.11-slim AS base
+# --- Stage 1: Builder (install dependencies) ---
+FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
-# --- Stage 2: Dependencies ---
-FROM base AS deps
-# COPY requirements-serving.txt .
-# RUN pip install --no-cache-dir -r requirements-serving.txt
+# Install build dependencies
+RUN pip install --no-cache-dir --upgrade pip uv
 
-# --- Stage 3: Runtime ---
-FROM deps AS runtime
-# COPY src/serving/ ./src/serving/
-# EXPOSE 8000
-# ENTRYPOINT ["gunicorn", "src.serving.api.main:app", "-k", "uvicorn.workers.UvicornWorker"]
+# Copy dependency definition
+COPY pyproject.toml ./
+
+# Install runtime dependencies (no dev group)
+RUN uv pip install --system --no-cache-dir \
+    fastapi>=0.115 \
+    uvicorn[standard]>=0.30 \
+    gunicorn>=22.0 \
+    python-multipart>=0.0.9 \
+    Pillow>=11.0 \
+    torch>=2.6 \
+    torchvision>=0.21 \
+    mlflow>=3.10 \
+    pydantic-settings>=2.7 \
+    boto3>=1.35
+
+# --- Stage 2: Runtime ---
+FROM python:3.11-slim AS runtime
+
+WORKDIR /app
+
+# Copy installed packages from builder
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Copy application source
+COPY src/ ./src/
+
+# S3/MinIO credentials for MLflow artifact access
+ENV MLFLOW_S3_ENDPOINT_URL="http://minio:9000" \
+    AWS_ACCESS_KEY_ID="minioadmin" \
+    AWS_SECRET_ACCESS_KEY="minioadmin123"
+
+EXPOSE 8000
+
+# Use exec form for graceful shutdown support
+ENTRYPOINT ["gunicorn", \
+    "-c", "src/serving/gunicorn/config.py", \
+    "src.serving.api.app:create_app()"]
