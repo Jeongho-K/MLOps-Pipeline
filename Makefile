@@ -1,4 +1,4 @@
-.PHONY: up down down-v ps logs seed lint format test verify install train pipeline pipeline-serve
+.PHONY: up down down-v ps logs seed lint format test verify install train pipeline pipeline-serve drift-check
 
 # ---------------------------------------------------------------------------
 # Docker Compose
@@ -49,6 +49,12 @@ pipeline:
 
 pipeline-serve:
 	uv run python -m src.orchestration.serve
+
+# ---------------------------------------------------------------------------
+# Monitoring
+# ---------------------------------------------------------------------------
+drift-check:
+	uv run python -c "from src.orchestration.flows.monitoring_flow import monitoring_pipeline; monitoring_pipeline(s3_endpoint='http://localhost:9000', pushgateway_url='http://localhost:9091')"
 
 # ---------------------------------------------------------------------------
 # Code Quality
