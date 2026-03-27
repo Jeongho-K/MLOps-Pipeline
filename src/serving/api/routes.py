@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Request, UploadFile
 from PIL import Image
 
 from src.data.preprocessing.transforms import get_eval_transforms
+from src.monitoring.metrics import record_prediction
 from src.serving.api.dependencies import ModelState, load_model_from_registry
 from src.serving.api.schemas import (
     HealthResponse,
@@ -84,6 +85,22 @@ async def predict(request: Request, file: UploadFile) -> PredictionResponse:
 
     class_names = request.app.state.serving_config.get_class_names_list()
     class_name = class_names[predicted_idx] if class_names and predicted_idx < len(class_names) else None
+
+    # Record metrics and log prediction
+    record_prediction(
+        predicted_class=predicted_idx,
+        confidence=confidence,
+        class_name=class_name,
+    )
+
+    prediction_logger = getattr(request.app.state, "prediction_logger", None)
+    if prediction_logger is not None:
+        prediction_logger.log(
+            predicted_class=predicted_idx,
+            confidence=confidence,
+            probabilities=probs,
+            class_name=class_name,
+        )
 
     return PredictionResponse(
         predicted_class=predicted_idx,

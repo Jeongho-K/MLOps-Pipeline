@@ -19,6 +19,9 @@ Services after `make up`:
 - MLflow UI: http://localhost:5000 (or `$MLFLOW_PORT`)
 - Prefect UI: http://localhost:4200
 - MinIO Console: http://localhost:9001 (minioadmin / minioadmin123)
+- Prometheus: http://localhost:9090
+- Grafana: http://localhost:3000 (admin / admin)
+- Pushgateway: http://localhost:9091
 
 ## Architecture (6 Layers)
 
@@ -46,6 +49,7 @@ Layer 1: Infrastructure— Docker Compose, PostgreSQL, MinIO, Redis
 | Nginx | `nginx:1.28.1-alpine` | Phase 5 |
 | FastAPI | `fastapi>=0.115` + `uvicorn>=0.30` + `gunicorn>=22.0` | Phase 5 |
 | Prometheus | `prom/prometheus:v3.10.0` | Phase 6 |
+| Pushgateway | `prom/pushgateway:v1.11.0` | Phase 6 |
 | Grafana | `grafana/grafana-oss:12.4.1` | Phase 6 |
 | Python | 3.11.x | |
 | PyTorch | 2.6.x | Phase 3 |
@@ -149,6 +153,7 @@ MLOps-Pipeline/
 | `make test-integration` | Run integration tests |
 | `make test-e2e` | Run end-to-end tests |
 | `make verify` | Run Phase verification checks |
+| `make drift-check` | Run drift detection manually |
 
 ## Gotchas
 

@@ -57,6 +57,8 @@ services:
       mc mb --ignore-existing myminio/mlflow-artifacts &&
       mc mb --ignore-existing myminio/dvc-storage &&
       mc mb --ignore-existing myminio/model-registry &&
+      mc mb --ignore-existing myminio/prediction-logs &&
+      mc mb --ignore-existing myminio/drift-reports &&
       echo 'All buckets created successfully.'
       "
     environment:
@@ -190,7 +192,69 @@ services:
       retries: 3
     restart: unless-stopped
 
+  # ---------------------------------------------------------------------------
+  # Prometheus - Metrics collection (Phase 6)
+  # ---------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v3.10.0
+    volumes:
+      - ./configs/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Pushgateway - Receive batch metrics from Evidently (Phase 6)
+  # ---------------------------------------------------------------------------
+  pushgateway:
+    image: prom/pushgateway:v1.11.0
+    ports:
+      - "${PUSHGATEWAY_PORT:-9091}:9091"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9091/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Grafana - Metrics visualization (Phase 6)
+  # ---------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana-oss:12.4.1
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/mlops-overview.json
+    volumes:
+      - ./configs/grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./configs/grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ./configs/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   minio_data:
   redis_data:
+  prometheus_data:
+  grafana_data:

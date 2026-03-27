@@ -32,6 +32,10 @@ class ServingConfig(BaseSettings):
     host: str = Field(default="0.0.0.0", description="Server bind host")
     port: int = Field(default=8000, ge=1, le=65535, description="Server bind port")
 
+    # Prediction logging (S3 credentials come from AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY env vars)
+    s3_endpoint: str = Field(default="http://minio:9000", description="S3 endpoint for prediction logs")
+    prediction_logs_bucket: str = Field(default="prediction-logs", description="S3 bucket for prediction logs")
+
     def get_class_names_list(self) -> list[str] | None:
         """Parse comma-separated class names into a list."""
         if self.class_names is None:

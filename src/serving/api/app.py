@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
@@ -11,6 +12,8 @@ from fastapi import FastAPI
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
+from src.monitoring.metrics import setup_metrics
+from src.monitoring.prediction_logger import PredictionLogger
 from src.serving.api.config import ServingConfig
 from src.serving.api.dependencies import (
     ModelState,
@@ -47,9 +50,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     app.state.model_state = model_state
 
+    app.state.prediction_logger = PredictionLogger(
+        s3_endpoint=config.s3_endpoint,
+        bucket=config.prediction_logs_bucket,
+        access_key=os.environ["AWS_ACCESS_KEY_ID"],
+        secret_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+    )
+
     yield
 
     logger.info("Shutting down, releasing model resources")
+    if hasattr(app.state, "prediction_logger"):
+        app.state.prediction_logger.flush()
     app.state.model_state = ModelState()
 
 
@@ -80,5 +92,6 @@ def create_app(config: ServingConfig | None = None, *, enable_lifespan: bool = T
     app.state.model_state = ModelState()
 
     app.include_router(router)
+    setup_metrics(app)
 
     return app
