@@ -79,11 +79,14 @@ export PREFECT_API_URL=http://prefect-server:4200/api
 
 ## MLflow 연결
 
-Docker 내부에서 학습 시 MLflow URI가 다릅니다:
-- **로컬 실행**: `http://localhost:5050`
-- **Docker 내부**: `http://mlflow:5000`
+MLflow 서버의 접속 URI는 실행 환경에 따라 다릅니다:
 
-`serve.py`의 기본값은 Docker 내부 URI (`http://mlflow:5000`)를 사용합니다.
+| 환경 | URI | 설명 |
+|------|-----|------|
+| 로컬 개발 | `http://localhost:5050` | 기본값 (macOS 포트 5000 충돌 방지) |
+| Docker 내부 | `http://mlflow:5000` | Docker 네트워크 내부 서비스명 사용 |
+
+`serve.py`와 `training_pipeline.py`의 기본값은 로컬 개발 URI (`http://localhost:5050`)입니다. Docker 환경에서는 `--mlflow-tracking-uri http://mlflow:5000`으로 변경하거나 `MLFLOW_TRACKING_URI` 환경변수를 설정하세요.
 
 ## 에러 핸들링
 
