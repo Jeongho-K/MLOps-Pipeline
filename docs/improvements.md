@@ -255,9 +255,43 @@ mc version enable myminio/model-registry
 
 ---
 
+## 설정 (Configuration)
+
+### 10. MLflow Tracking URI — 로컬/Docker 포트 불일치
+
+**현재 상태**
+로컬 개발 시 사용되는 MLflow Tracking URI 기본값이 `http://localhost:5050`으로 하드코딩되어 있다.
+이 값은 다음 4개 파일에서 확인된다:
+
+- `src/training/configs/train_config.py` (`mlflow_tracking_uri` 필드 기본값)
+- `src/orchestration/serve.py` (`--mlflow-tracking-uri` 인자 기본값)
+- `src/orchestration/flows/training_pipeline.py` (`mlflow_tracking_uri` 파라미터 기본값)
+- `src/orchestration/tasks/training_tasks.py` (`mlflow_tracking_uri` 파라미터 기본값)
+
+반면 `.env.example`에서는 `MLFLOW_PORT=5000`이 기본값이고,
+`docker-compose.yml`의 MLflow 서비스도 포트 5000을 사용한다.
+CLAUDE.md의 Gotchas에 macOS port 5000 충돌로 `MLFLOW_PORT=5050` 변경을 권장하지만,
+`.env.example`에는 이 내용이 반영되어 있지 않아 혼동이 발생한다.
+
+**개선 방향**
+1. `.env.example`에 `MLFLOW_PORT=5050` (macOS 기본) 또는 주석으로 포트 충돌 안내를 추가한다.
+2. `TRAIN_MLFLOW_TRACKING_URI` 환경변수를 `.env.example`에 추가하여 로컬/Docker 환경 전환을 명시한다.
+3. 코드 기본값을 `http://localhost:5000`으로 통일하고, macOS 사용자는 `.env`에서 오버라이드하도록 안내한다.
+
+```bash
+# .env.example에 추가
+# NOTE: macOS는 포트 5000이 ControlCenter와 충돌할 수 있음. 5050 권장.
+MLFLOW_PORT=5000
+TRAIN_MLFLOW_TRACKING_URI=http://localhost:${MLFLOW_PORT}
+```
+
+**우선순위**: 중간
+
+---
+
 ## CI/CD
 
-### 9. GitHub Actions CI 파이프라인 미구성
+### 11. GitHub Actions CI 파이프라인 미구성
 
 **현재 상태**
 `.github/workflows/` 디렉터리가 없어 PR 생성 시 자동 lint/테스트가 실행되지 않는다.
@@ -327,10 +361,11 @@ jobs:
 |---|------|--------|--------|
 | 3 | Grafana Alerting 미구성 | 모니터링 | 높음 |
 | 4 | Evidently 드리프트 자동 스케줄링 | 모니터링 | 높음 |
-| 9 | GitHub Actions CI 파이프라인 | CI/CD | 높음 |
+| 11 | GitHub Actions CI 파이프라인 | CI/CD | 높음 |
 | 1 | Gunicorn 다중 워커 reload 불일치 | 서빙 | 중간 |
 | 2 | Prometheus retention 미설정 | 모니터링 | 중간 |
 | 5 | E2E 테스트 미작성 | 테스트 | 중간 |
 | 6 | Locust 부하 테스트 미작성 | 테스트 | 중간 |
+| 10 | MLflow Tracking URI 포트 불일치 | 설정 | 중간 |
 | 7 | Postgres healthcheck start_period | 인프라 | 낮음 |
 | 8 | MinIO 버킷 버전 관리 | 인프라 | 낮음 |
