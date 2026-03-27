@@ -1,0 +1,30 @@
+architecture-beta
+    group monitoring(cloud)[Layer 6 Monitoring]
+    group serving(server)[Layer 5 Serving]
+    group orchestration(cloud)[Layer 4 Orchestration]
+    group training(cloud)[Layer 3 Training]
+    group data(cloud)[Layer 2 Data Pipeline]
+    group infra(cloud)[Layer 1 Infrastructure]
+
+    service grafana(logos:grafana)[Grafana] in monitoring
+    service prometheus(logos:prometheus)[Prometheus] in monitoring
+    service pushgateway(server)[Pushgateway] in monitoring
+    service evidently(server)[Evidently] in monitoring
+
+    service nginx(logos:nginx)[Nginx] in serving
+    service gunicorn(server)[Gunicorn] in serving
+    service fastapi(logos:fastapi-icon)[FastAPI] in serving
+
+    service prefect(simple-icons:prefect)[Prefect] in orchestration
+
+    service pytorch(logos:pytorch-icon)[PyTorch] in training
+    service mlflow(simple-icons:mlflow)[MLflow] in training
+
+    service dvc(server)[DVC] in data
+    service cleanvision(server)[CleanVision] in data
+    service cleanlab(server)[CleanLab] in data
+
+    service docker(logos:docker-icon)[Docker Compose] in infra
+    service postgres(logos:postgresql)[PostgreSQL] in infra
+    service minio(simple-icons:minio)[MinIO] in infra
+    service redis(logos:redis)[Redis] in infra

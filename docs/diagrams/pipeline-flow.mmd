@@ -1,0 +1,30 @@
+architecture-beta
+    service raw(disk)[Raw Data]
+    service dvc(server)[DVC]
+    service cleanvision(server)[CleanVision]
+    service cleanlab(server)[CleanLab]
+    service preprocess(server)[Augmentation]
+    service pytorch(logos:pytorch-icon)[PyTorch]
+    service mlflow(simple-icons:mlflow)[MLflow Tracking]
+    service registry(simple-icons:mlflow)[Model Registry]
+    service fastapi(logos:fastapi-icon)[FastAPI]
+    service nginx(logos:nginx)[Nginx]
+    service minio(simple-icons:minio)[MinIO Logs]
+    service prom(logos:prometheus)[Prometheus]
+    service evidently(server)[Evidently]
+    service grafana(logos:grafana)[Grafana]
+
+    raw:R --> L:dvc
+    dvc:R --> L:cleanvision
+    cleanvision:R --> L:cleanlab
+    cleanlab:R --> L:preprocess
+    preprocess:R --> L:pytorch
+    pytorch:R --> L:mlflow
+    pytorch:B --> T:registry
+    registry:B --> T:fastapi
+    fastapi:R --> L:nginx
+    fastapi:B --> T:minio
+    fastapi:B --> T:prom
+    minio:R --> L:evidently
+    evidently:R --> L:prom
+    prom:R --> L:grafana

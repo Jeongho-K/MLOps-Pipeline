@@ -26,202 +26,27 @@
 
 ## 아키텍처
 
-```mermaid
-graph TB
-    subgraph L6["&#x1f4ca; Layer 6: Monitoring"]
-        EVIDENTLY["&#x1f50d; Evidently<br/>드리프트 감지"]
-        PROMETHEUS["&#x1f525; Prometheus<br/>메트릭 수집"]
-        PUSHGATEWAY["&#x1f4e4; Pushgateway<br/>배치 메트릭"]
-        GRAFANA["&#x1f4c8; Grafana<br/>시각화"]
-    end
-
-    subgraph L5["&#x1f680; Layer 5: Serving"]
-        NGINX["&#x1f310; Nginx<br/>리버스 프록시"]
-        GUNICORN["&#x1f984; Gunicorn<br/>프로세스 관리"]
-        FASTAPI["&#x26a1; FastAPI<br/>추론 API"]
-    end
-
-    subgraph L4["&#x2699;&#xfe0f; Layer 4: Orchestration"]
-        PREFECT["&#x1f3af; Prefect Server<br/>워크플로우 관리"]
-    end
-
-    subgraph L3["&#x1f9e0; Layer 3: Training"]
-        PYTORCH["&#x1f525; PyTorch<br/>모델 학습"]
-        MLFLOW["&#x1f4cb; MLflow<br/>실험 추적 & 레지스트리"]
-    end
-
-    subgraph L2["&#x1f4a1; Layer 2: Data Pipeline"]
-        DVC["&#x1f4be; DVC<br/>데이터 버전 관리"]
-        CLEANLAB["&#x1f3f7;&#xfe0f; CleanLab<br/>라벨 검증"]
-        CLEANVISION["&#x1f441;&#xfe0f; CleanVision<br/>이미지 검증"]
-    end
-
-    subgraph L1["&#x1f5a5;&#xfe0f; Layer 1: Infrastructure"]
-        DOCKER["&#x1f433; Docker Compose"]
-        POSTGRES["&#x1f418; PostgreSQL"]
-        MINIO["&#x1f4e6; MinIO<br/>오브젝트 스토리지"]
-        REDIS["&#x26a1; Redis"]
-    end
-
-    NGINX --> GUNICORN --> FASTAPI
-    FASTAPI --> MLFLOW
-    PROMETHEUS -.->|scrape| FASTAPI
-    PROMETHEUS -.->|scrape| PUSHGATEWAY
-    EVIDENTLY -->|push| PUSHGATEWAY
-    GRAFANA -.->|query| PROMETHEUS
-    PREFECT -->|orchestrate| PYTORCH
-    PYTORCH -->|log| MLFLOW
-    MLFLOW --> POSTGRES
-    MLFLOW --> MINIO
-    PREFECT --> POSTGRES
-    DVC --> MINIO
-    CLEANLAB --> DVC
-    CLEANVISION --> DVC
-    EVIDENTLY --> MINIO
-    FASTAPI -.->|prediction logs| MINIO
-
-    classDef infra fill:#1a2744,stroke:#5b8def,color:#c5d8f8,stroke-width:2px
-    classDef data fill:#14352a,stroke:#34d399,color:#a7f3d0,stroke-width:2px
-    classDef training fill:#3b1f0b,stroke:#f59e0b,color:#fde68a,stroke-width:2px
-    classDef orch fill:#2e1065,stroke:#a78bfa,color:#ddd6fe,stroke-width:2px
-    classDef serving fill:#4c0519,stroke:#fb7185,color:#fecdd3,stroke-width:2px
-    classDef monitoring fill:#083344,stroke:#22d3ee,color:#a5f3fc,stroke-width:2px
-
-    class DOCKER,POSTGRES,MINIO,REDIS infra
-    class DVC,CLEANLAB,CLEANVISION data
-    class PYTORCH,MLFLOW training
-    class PREFECT orch
-    class NGINX,GUNICORN,FASTAPI serving
-    class EVIDENTLY,PROMETHEUS,PUSHGATEWAY,GRAFANA monitoring
-
-    style L1 fill:#0f172a,stroke:#3b82f6,color:#93c5fd,stroke-width:2px
-    style L2 fill:#052e16,stroke:#22c55e,color:#86efac,stroke-width:2px
-    style L3 fill:#451a03,stroke:#f59e0b,color:#fcd34d,stroke-width:2px
-    style L4 fill:#1e1b4b,stroke:#818cf8,color:#c7d2fe,stroke-width:2px
-    style L5 fill:#450a0a,stroke:#f87171,color:#fca5a5,stroke-width:2px
-    style L6 fill:#042f2e,stroke:#2dd4bf,color:#99f6e4,stroke-width:2px
-
-    linkStyle 0,1 stroke:#fb7185,stroke-width:2px
-    linkStyle 2 stroke:#fb7185,stroke-width:1.5px
-    linkStyle 3,4 stroke:#22d3ee,stroke-width:1.5px
-    linkStyle 5 stroke:#22d3ee,stroke-width:1.5px
-    linkStyle 6 stroke:#22d3ee,stroke-width:1.5px
-    linkStyle 7,8 stroke:#a78bfa,stroke-width:1.5px
-    linkStyle 9,10 stroke:#f59e0b,stroke-width:1.5px
-```
+<p align="center">
+  <img src="docs/images/architecture.svg" alt="6-Layer Architecture" width="100%">
+</p>
 
 ## 파이프라인 흐름
 
-```mermaid
-graph LR
-    subgraph DATA["&#x1f4a1; 데이터 준비"]
-        RAW["&#x1f4c1; Raw Data"] --> DVC["&#x1f4be; DVC<br/>버전 관리"]
-        DVC --> CV["&#x1f441;&#xfe0f; CleanVision<br/>이미지 검증"]
-        CV --> CL["&#x1f3f7;&#xfe0f; CleanLab<br/>라벨 검증"]
-    end
-
-    subgraph TRAIN["&#x1f9e0; 모델 학습"]
-        CL --> PREPROCESS["&#x1f504; 전처리<br/>Augmentation"]
-        PREPROCESS --> PYTORCH["&#x1f525; PyTorch<br/>학습 루프"]
-        PYTORCH --> |메트릭 로깅| MLFLOW["&#x1f4cb; MLflow<br/>Tracking"]
-        PYTORCH --> |모델 저장| REGISTRY["&#x1f4e6; MLflow<br/>Model Registry"]
-    end
-
-    subgraph SERVE["&#x1f680; 모델 서빙"]
-        REGISTRY --> |모델 로드| FASTAPI["&#x26a1; FastAPI<br/>추론 API"]
-        FASTAPI --> NGINX["&#x1f310; Nginx<br/>리버스 프록시"]
-    end
-
-    subgraph MONITOR["&#x1f4ca; 모니터링"]
-        FASTAPI --> |예측 로그| MINIO["&#x1f4e6; MinIO"]
-        FASTAPI --> |메트릭| PROM["&#x1f525; Prometheus"]
-        MINIO --> EVIDENTLY["&#x1f50d; Evidently<br/>드리프트 감지"]
-        EVIDENTLY --> PROM
-        PROM --> GRAFANA["&#x1f4c8; Grafana"]
-    end
-
-    classDef data fill:#14352a,stroke:#34d399,color:#a7f3d0,stroke-width:2px
-    classDef training fill:#3b1f0b,stroke:#f59e0b,color:#fde68a,stroke-width:2px
-    classDef serving fill:#4c0519,stroke:#fb7185,color:#fecdd3,stroke-width:2px
-    classDef monitoring fill:#083344,stroke:#22d3ee,color:#a5f3fc,stroke-width:2px
-
-    class RAW,DVC,CV,CL data
-    class PREPROCESS,PYTORCH,MLFLOW,REGISTRY training
-    class FASTAPI,NGINX serving
-    class MINIO,PROM,EVIDENTLY,GRAFANA monitoring
-
-    style DATA fill:#052e16,stroke:#22c55e,color:#86efac,stroke-width:2px
-    style TRAIN fill:#451a03,stroke:#f59e0b,color:#fcd34d,stroke-width:2px
-    style SERVE fill:#450a0a,stroke:#f87171,color:#fca5a5,stroke-width:2px
-    style MONITOR fill:#042f2e,stroke:#2dd4bf,color:#99f6e4,stroke-width:2px
-```
+<p align="center">
+  <img src="docs/images/pipeline-flow.svg" alt="Pipeline Flow" width="100%">
+</p>
 
 ## 서빙 아키텍처
 
-```mermaid
-graph LR
-    CLIENT["&#x1f5a5;&#xfe0f; Client"] --> NGINX["&#x1f310; Nginx<br/>Rate Limiting<br/>:80"]
-    NGINX --> GUNICORN["&#x1f984; Gunicorn<br/>Process Manager<br/>:8000"]
-    GUNICORN --> WORKER1["&#x26a1; Uvicorn Worker 1"]
-    GUNICORN --> WORKER2["&#x26a1; Uvicorn Worker 2"]
-
-    WORKER1 --> FASTAPI["&#x1f680; FastAPI App"]
-    WORKER2 --> FASTAPI
-
-    FASTAPI --> |모델 로드| MLFLOW["&#x1f4cb; MLflow<br/>Model Registry"]
-    MLFLOW --> MINIO_MODEL["&#x1f4e6; MinIO<br/>모델 아티팩트"]
-
-    FASTAPI --> |예측 로그 저장| MINIO_LOGS["&#x1f4e6; MinIO<br/>prediction-logs"]
-    FASTAPI -.-> |"/metrics"| PROM["&#x1f525; Prometheus<br/>:9090"]
-
-    classDef client fill:#1e293b,stroke:#94a3b8,color:#e2e8f0,stroke-width:2px
-    classDef serving fill:#4c0519,stroke:#fb7185,color:#fecdd3,stroke-width:2px
-    classDef registry fill:#3b1f0b,stroke:#f59e0b,color:#fde68a,stroke-width:2px
-    classDef storage fill:#1a2744,stroke:#5b8def,color:#c5d8f8,stroke-width:2px
-    classDef monitoring fill:#083344,stroke:#22d3ee,color:#a5f3fc,stroke-width:2px
-
-    class CLIENT client
-    class NGINX,GUNICORN,WORKER1,WORKER2,FASTAPI serving
-    class MLFLOW registry
-    class MINIO_MODEL,MINIO_LOGS storage
-    class PROM monitoring
-```
+<p align="center">
+  <img src="docs/images/serving.svg" alt="Serving Architecture" width="100%">
+</p>
 
 ## 모니터링
 
-```mermaid
-graph TB
-    subgraph REALTIME["&#x26a1; 실시간 경로 Real-time Path"]
-        FASTAPI["&#x1f680; FastAPI<br/>/metrics"] -.-> |스크랩 15s| PROM["&#x1f525; Prometheus"]
-    end
-
-    subgraph BATCH["&#x1f553; 배치 경로 Batch Path"]
-        FASTAPI2["&#x1f680; FastAPI<br/>추론 서버"] --> |예측 로그| MINIO["&#x1f4e6; MinIO<br/>prediction-logs"]
-        MINIO --> |스케줄 실행| PREFECT["&#x1f3af; Prefect<br/>Drift Flow"]
-        PREFECT --> EVIDENTLY["&#x1f50d; Evidently<br/>드리프트 분석"]
-        EVIDENTLY --> |리포트 저장| MINIO_REPORT["&#x1f4e6; MinIO<br/>drift-reports"]
-        EVIDENTLY --> |메트릭 push| PUSHGW["&#x1f4e4; Pushgateway"]
-        PUSHGW -.-> |스크랩| PROM2["&#x1f525; Prometheus"]
-    end
-
-    PROM --> GRAFANA["&#x1f4c8; Grafana<br/>대시보드"]
-    PROM2 --> GRAFANA
-
-    classDef serving fill:#4c0519,stroke:#fb7185,color:#fecdd3,stroke-width:2px
-    classDef storage fill:#1a2744,stroke:#5b8def,color:#c5d8f8,stroke-width:2px
-    classDef orch fill:#2e1065,stroke:#a78bfa,color:#ddd6fe,stroke-width:2px
-    classDef monitoring fill:#083344,stroke:#22d3ee,color:#a5f3fc,stroke-width:2px
-    classDef dashboard fill:#064e3b,stroke:#34d399,color:#a7f3d0,stroke-width:2px
-
-    class FASTAPI,FASTAPI2 serving
-    class MINIO,MINIO_REPORT storage
-    class PREFECT orch
-    class PROM,PROM2,PUSHGW,EVIDENTLY monitoring
-    class GRAFANA dashboard
-
-    style REALTIME fill:#042f2e,stroke:#2dd4bf,color:#99f6e4,stroke-width:2px
-    style BATCH fill:#1e1b4b,stroke:#818cf8,color:#c7d2fe,stroke-width:2px
-```
+<p align="center">
+  <img src="docs/images/monitoring.svg" alt="Monitoring Architecture" width="100%">
+</p>
 
 ## 기술 스택
 

@@ -1,0 +1,10 @@
+{
+  "theme": "base",
+  "themeVariables": {
+    "primaryColor": "#f0f4f8",
+    "primaryBorderColor": "#cbd5e1",
+    "primaryTextColor": "#334155",
+    "lineColor": "#94a3b8",
+    "fontSize": "14px"
+  }
+}

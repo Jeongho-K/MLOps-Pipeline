@@ -1,0 +1,19 @@
+architecture-beta
+    service api1(logos:fastapi-icon)[FastAPI Metrics]
+    service prom1(logos:prometheus)[Prometheus]
+    service api2(logos:fastapi-icon)[FastAPI Inference]
+    service logs(simple-icons:minio)[Prediction Logs]
+    service prefect(simple-icons:prefect)[Prefect Flow]
+    service evidently(server)[Evidently]
+    service pushgw(server)[Pushgateway]
+    service prom2(logos:prometheus)[Prometheus Batch]
+    service grafana(logos:grafana)[Grafana Dashboard]
+
+    api1:R --> L:prom1
+    api2:R --> L:logs
+    logs:R --> L:prefect
+    prefect:R --> L:evidently
+    evidently:R --> L:pushgw
+    pushgw:R --> L:prom2
+    prom1:B --> T:grafana
+    prom2:B --> T:grafana
