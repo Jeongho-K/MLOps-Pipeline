@@ -30,6 +30,10 @@ dependencies = [
     "Pillow>=11.0",
     "numpy>=2.0",
     "pandas>=2.2",
+    # Monitoring
+    "prometheus-client>=0.21",
+    "prometheus-fastapi-instrumentator>=7.0",
+    "evidently>=0.5",
 ]
 
 [build-system]
