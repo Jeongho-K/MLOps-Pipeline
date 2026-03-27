@@ -37,10 +37,12 @@ graph TB
 
 - **이미지:** `minio/minio:RELEASE.2025-09-07T16-13-09Z`
 - **용도:** S3 호환 오브젝트 스토리지 (MLflow 아티팩트, DVC 데이터, 모델 레지스트리)
-- **버킷:**
+- **버킷:** (총 5개, `minio-init` 서비스가 자동 생성)
   - `mlflow-artifacts` — MLflow 실험 아티팩트
   - `dvc-storage` — DVC 데이터 버전 관리
   - `model-registry` — 프로덕션 모델 저장
+  - `prediction-logs` — 예측 로그 저장
+  - `drift-reports` — 드리프트 리포트 저장
 - **볼륨:** `minio_data:/data`
 
 > **참고:** MinIO Docker 이미지는 2025년 10월에 중단되었습니다. 최후의 안정 태그를 고정하여 사용하며, 추후 SeaweedFS로 마이그레이션이 가능합니다 (S3 프로토콜 호환).

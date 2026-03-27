@@ -83,6 +83,19 @@ uv run python -m src.training.train --registered-model-name ImageClassifier
 
 ## MLflow 통합
 
+### 접속 URI
+
+MLflow 서버의 접속 URI는 실행 환경에 따라 다릅니다:
+
+| 환경 | URI | 설명 |
+|------|-----|------|
+| 로컬 개발 | `http://localhost:5050` | 기본값 (macOS에서 포트 5000 충돌 방지) |
+| Docker 내부 | `http://mlflow:5000` | Docker 네트워크 내부 서비스명 사용 |
+
+`MLFLOW_TRACKING_URI` 환경변수 또는 `TrainConfig`의 `mlflow_tracking_uri` 필드로 변경할 수 있습니다.
+
+> **참고:** macOS에서는 ControlCenter가 포트 5000을 사용하므로, 호스트에서 접속 시 `.env`의 `MLFLOW_PORT=5050`을 사용합니다. Docker 내부에서는 컨테이너 포트 5000을 직접 사용합니다.
+
 ### 자동 트래킹 항목
 
 - **파라미터**: 모델명, 하이퍼파라미터, 데이터 크기
