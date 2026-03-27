@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
@@ -12,6 +13,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
 from src.monitoring.metrics import setup_metrics
+from src.monitoring.prediction_logger import PredictionLogger
 from src.serving.api.config import ServingConfig
 from src.serving.api.dependencies import (
     ModelState,
@@ -48,9 +50,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     app.state.model_state = model_state
 
+    s3_endpoint = os.getenv("MLFLOW_S3_ENDPOINT_URL", "http://minio:9000")
+    app.state.prediction_logger = PredictionLogger(
+        s3_endpoint=s3_endpoint,
+        bucket="prediction-logs",
+        access_key=os.getenv("AWS_ACCESS_KEY_ID", "minioadmin"),
+        secret_key=os.getenv("AWS_SECRET_ACCESS_KEY", "minioadmin123"),
+    )
+
     yield
 
     logger.info("Shutting down, releasing model resources")
+    if hasattr(app.state, "prediction_logger"):
+        app.state.prediction_logger.flush()
     app.state.model_state = ModelState()
 
 
