@@ -239,3 +239,9 @@ logs/
 node_modules/
 package-lock.json
 package.json
+
+# Draw.io source files (SVG exports are tracked instead)
+*.drawio
+
+# Superpowers brainstorming sessions
+.superpowers/
