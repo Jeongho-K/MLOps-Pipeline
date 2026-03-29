@@ -39,7 +39,7 @@ from mlflow.models import infer_signature
 from prefect import flow, task
 from prefect.artifacts import create_markdown_artifact, create_table_artifact
 from prefect.runtime import flow_run as flow_run_runtime
-from prefect.transactions import transaction
+from prefect.transactions import Transaction, transaction
 from torch.utils.data import DataLoader
 from torchvision.datasets import ImageFolder
 
@@ -511,7 +511,13 @@ def version_data_task(
 
     if not Path(".dvc").exists():
         logger.warning("DVC not initialized. Skipping data versioning.")
-        return {"round": round_num, "dvc_added": False, "dvc_pushed": False, "data_hash": ""}
+        return {
+            "round_num": round_num,
+            "dvc_added": False,
+            "dvc_pushed": False,
+            "checksum_verified": False,
+            "data_hash": "",
+        }
 
     manager = DVCManager()
     try:
@@ -543,7 +549,7 @@ def version_data_task(
 
 
 @version_data_task.on_rollback
-def rollback_version_data(txn: transaction) -> None:
+def rollback_version_data(txn: Transaction) -> None:
     """Rollback data to the previous DVC state on transaction failure."""
     from src.data.versioning import DVCManager
 

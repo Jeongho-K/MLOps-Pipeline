@@ -151,6 +151,9 @@ class DVCManager:
         with open(path) as f:
             dvc_meta = yaml.safe_load(f)
 
+        if not isinstance(dvc_meta, dict):
+            return ""
+
         outs = dvc_meta.get("outs", [])
         if outs:
             return outs[0].get("md5", "")
