@@ -30,6 +30,8 @@ class TestPredictionLog:
             "class_name": "cat",
             "confidence": 0.92,
             "probabilities": [0.03, 0.05, 0.92],
+            "model_version": "",
+            "mlflow_run_id": "",
         }
 
     def test_to_dict_with_none_class_name(self) -> None:

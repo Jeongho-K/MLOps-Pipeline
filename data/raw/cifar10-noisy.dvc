@@ -1,0 +1,6 @@
+outs:
+- md5: 9fb98f06c47926214d402592b7e89b3f.dir
+  size: 11506118
+  nfiles: 5121
+  hash: md5
+  path: cifar10-noisy

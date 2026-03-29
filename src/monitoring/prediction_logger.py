@@ -25,6 +25,8 @@ class PredictionLog:
         class_name: Human-readable class name, or None if not available.
         confidence: Confidence score of the predicted class (0-1).
         probabilities: Full probability distribution across all classes.
+        model_version: MLflow model version that generated this prediction.
+        mlflow_run_id: MLflow run ID of the training run that produced the model.
     """
 
     timestamp: str
@@ -32,6 +34,8 @@ class PredictionLog:
     class_name: str | None
     confidence: float
     probabilities: list[float]
+    model_version: str = ""
+    mlflow_run_id: str = ""
 
     def to_dict(self) -> dict:
         """Return the log entry as a plain dictionary.
@@ -95,6 +99,8 @@ class PredictionLogger:
         confidence: float,
         probabilities: list[float],
         class_name: str | None = None,
+        model_version: str = "",
+        mlflow_run_id: str = "",
     ) -> None:
         """Append a prediction to the buffer, flushing automatically at threshold.
 
@@ -103,6 +109,8 @@ class PredictionLogger:
             confidence: Confidence score of the predicted class (0-1).
             probabilities: Full probability distribution across all classes.
             class_name: Human-readable class name, or None if not available.
+            model_version: MLflow model version that generated this prediction.
+            mlflow_run_id: MLflow run ID of the training run that produced the model.
         """
         timestamp = datetime.now(tz=UTC).isoformat()
         entry = PredictionLog(
@@ -111,6 +119,8 @@ class PredictionLogger:
             class_name=class_name,
             confidence=confidence,
             probabilities=probabilities,
+            model_version=model_version,
+            mlflow_run_id=mlflow_run_id,
         )
 
         with self._lock:

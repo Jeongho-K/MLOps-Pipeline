@@ -100,6 +100,8 @@ async def predict(request: Request, file: UploadFile) -> PredictionResponse:
             confidence=confidence,
             probabilities=probs,
             class_name=class_name,
+            model_version=ms.model_version,
+            mlflow_run_id=ms.mlflow_run_id,
         )
 
     return PredictionResponse(

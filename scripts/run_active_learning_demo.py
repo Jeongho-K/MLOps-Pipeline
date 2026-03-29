@@ -25,22 +25,27 @@ from __future__ import annotations
 
 import argparse
 import logging
+import subprocess
 from pathlib import Path
 from typing import Any
 
+import httpx
 import mlflow
 import mlflow.pytorch
 import numpy as np
+import pandas as pd
 import torch
 from mlflow import MlflowClient
 from mlflow.models import infer_signature
 from prefect import flow, task
 from prefect.artifacts import create_markdown_artifact, create_table_artifact
+from prefect.runtime import flow_run as flow_run_runtime
 from torch.utils.data import DataLoader
 from torchvision.datasets import ImageFolder
 
 from src.data.preprocessing.transforms import get_eval_transforms, get_train_transforms
 from src.data.validation.label_validator import validate_labels
+from src.monitoring.evidently.drift_detector import detect_drift, push_drift_metrics
 from src.training.models.classifier import create_classifier
 from src.training.trainers.classification_trainer import _run_epoch, resolve_device
 
@@ -149,10 +154,18 @@ def train_round_task(
 
     pin_memory = device.type == "cuda"
     train_loader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=pin_memory,
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=0,
+        pin_memory=pin_memory,
     )
     val_loader = DataLoader(
-        val_dataset, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=pin_memory,
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=0,
+        pin_memory=pin_memory,
     )
 
     model = create_classifier(model_name, num_classes, pretrained=True)
@@ -167,43 +180,75 @@ def train_round_task(
     best_val_acc = 0.0
     model_version = None
     with mlflow.start_run(run_name=f"round-{round_num}") as run:
-        mlflow.log_params({
-            "round": round_num,
-            "model_name": model_name,
-            "epochs": epochs,
-            "batch_size": batch_size,
-            "learning_rate": learning_rate,
-            "train_samples": len(train_dataset),
-            "val_samples": len(val_dataset),
-            "device": str(device),
-        })
+        # Tag with Prefect flow_run_id for cross-system traceability
+        flow_run_id = flow_run_runtime.get_id() or ""
+        if flow_run_id:
+            mlflow.set_tag("prefect.flow_run_id", flow_run_id)
+        mlflow.set_tag("round_number", str(round_num))
+
+        mlflow.log_params(
+            {
+                "round": round_num,
+                "model_name": model_name,
+                "epochs": epochs,
+                "batch_size": batch_size,
+                "learning_rate": learning_rate,
+                "train_samples": len(train_dataset),
+                "val_samples": len(val_dataset),
+                "device": str(device),
+            }
+        )
 
         for epoch in range(epochs):
             train_loss, train_acc = _run_epoch(
-                model, train_loader, criterion, optimizer, device, training=True,
+                model,
+                train_loader,
+                criterion,
+                optimizer,
+                device,
+                training=True,
             )
             val_loss, val_acc = _run_epoch(
-                model, val_loader, criterion, None, device, training=False,
+                model,
+                val_loader,
+                criterion,
+                None,
+                device,
+                training=False,
             )
 
-            mlflow.log_metrics({
-                "train_loss": train_loss,
-                "train_accuracy": train_acc,
-                "val_loss": val_loss,
-                "val_accuracy": val_acc,
-            }, step=epoch)
+            mlflow.log_metrics(
+                {
+                    "train_loss": train_loss,
+                    "train_accuracy": train_acc,
+                    "val_loss": val_loss,
+                    "val_accuracy": val_acc,
+                },
+                step=epoch,
+            )
 
             if val_acc > best_val_acc:
                 best_val_acc = val_acc
 
-        mlflow.log_metrics({
-            "best_val_accuracy": best_val_acc,
-            "round_number": round_num,
-            "train_data_count": len(train_dataset),
-        })
+        mlflow.log_metrics(
+            {
+                "best_val_accuracy": best_val_acc,
+                "round_number": round_num,
+                "train_data_count": len(train_dataset),
+            }
+        )
+
+        # Collect validation predictions for drift detection
+        model.eval()
+        val_preds_list: list[np.ndarray] = []
+        with torch.no_grad():
+            for images, _ in val_loader:
+                outputs = model(images.to(device))
+                probs = torch.softmax(outputs, dim=1)
+                val_preds_list.append(probs.cpu().numpy())
+        val_predictions = np.concatenate(val_preds_list, axis=0)
 
         # Log model with signature
-        model.eval()
         sample_input = torch.randn(1, 3, image_size, image_size)
         with torch.no_grad():
             sample_output = model(sample_input.to(device))
@@ -221,7 +266,9 @@ def train_round_task(
             model_version = model_info.registered_model_version
             client = MlflowClient()
             client.set_registered_model_alias(
-                registered_model_name, "challenger", model_version,
+                registered_model_name,
+                "challenger",
+                model_version,
             )
 
         run_id = run.info.run_id
@@ -233,6 +280,7 @@ def train_round_task(
         "val_samples": len(val_dataset),
         "run_id": run_id,
         "model_version": model_version,
+        "val_predictions": val_predictions,
     }
 
 
@@ -245,6 +293,7 @@ def clean_labels_task(
     num_classes: int,
     image_size: int = 224,
     max_remove_per_round: int = 100,
+    run_id: str | None = None,
 ) -> dict[str, Any]:
     """Run CleanLab and remove likely mislabeled images.
 
@@ -256,6 +305,7 @@ def clean_labels_task(
         num_classes: Number of classes.
         image_size: Input image size.
         max_remove_per_round: Maximum images to remove per round.
+        run_id: If provided, log CleanLab metrics to this MLflow run.
 
     Returns:
         Dict with label cleaning results.
@@ -310,6 +360,14 @@ def clean_labels_task(
         "label_issue_rate": report.issues_found / max(before_count, 1),
     }
 
+    # Log CleanLab metrics to MLflow for traceability
+    if run_id:
+        client = MlflowClient(mlflow_tracking_uri)
+        client.log_metric(run_id, "label_issues_found", report.issues_found)
+        client.log_metric(run_id, "avg_label_quality", report.avg_label_quality)
+        client.log_metric(run_id, "label_issue_rate", result["label_issue_rate"])
+        logger.info("Logged CleanLab metrics to MLflow run %s", run_id)
+
     markdown = f"""## Round {round_num}: Label Cleaning (CleanLab)
 | Metric | Value |
 |--------|-------|
@@ -318,14 +376,201 @@ def clean_labels_task(
 | Samples Before | {before_count} |
 | Samples After | {after_count} |
 | Avg Label Quality | {report.avg_label_quality:.3f} |
-| Label Issue Rate | {result['label_issue_rate']:.1%} |
+| Label Issue Rate | {result["label_issue_rate"]:.1%} |
 """
     create_markdown_artifact(key=f"label-clean-round-{round_num}", markdown=markdown)
 
     logger.info(
         "Round %d label cleaning: %d issues found, %d removed",
-        round_num, report.issues_found, removed_count,
+        round_num,
+        report.issues_found,
+        removed_count,
     )
+    return result
+
+
+@task(name="reload-serving-model", retries=2, retry_delay_seconds=5)
+def reload_serving_model_task(
+    serving_url: str,
+    model_name: str,
+    model_version: str,
+) -> dict[str, Any]:
+    """Notify the serving API to reload the champion model.
+
+    Args:
+        serving_url: Base URL of the serving API (e.g. http://localhost:8000).
+        model_name: Registered model name in MLflow.
+        model_version: Model version string to reload.
+
+    Returns:
+        Dict with reload response status and message.
+    """
+    reload_url = f"{serving_url.rstrip('/')}/model/reload"
+    payload = {"model_name": model_name, "model_version": model_version}
+
+    with httpx.Client(timeout=30.0) as client:
+        response = client.post(reload_url, json=payload)
+        response.raise_for_status()
+        result = response.json()
+
+    logger.info(
+        "Serving model reloaded: %s version %s -> %s",
+        model_name,
+        model_version,
+        result.get("status"),
+    )
+
+    create_markdown_artifact(
+        key="serving-reload",
+        markdown=(
+            f"## Serving Model Reloaded\n**Model:** {model_name} v{model_version}\n**Status:** {result.get('status')}\n"
+        ),
+    )
+
+    return result
+
+
+@task(name="check-drift")
+def check_drift_task(
+    current_predictions: np.ndarray,
+    reference_predictions: np.ndarray | None,
+    round_num: int,
+    run_id: str = "",
+    pushgateway_url: str = "http://localhost:9091",
+) -> dict[str, Any]:
+    """Compare prediction distributions between consecutive AL rounds.
+
+    Args:
+        current_predictions: Prediction probability array for current round.
+        reference_predictions: Prediction probabilities for previous round, or None.
+        round_num: Current AL round number.
+        run_id: MLflow run ID for traceability in artifacts.
+        pushgateway_url: URL of Prometheus Pushgateway.
+
+    Returns:
+        Dict with drift detection results, or empty dict if no reference.
+    """
+    if reference_predictions is None:
+        logger.info("Round %d: No reference predictions for drift comparison (first round)", round_num)
+        return {}
+
+    columns = [f"class_{i}_prob" for i in range(current_predictions.shape[1])]
+    ref_df = pd.DataFrame(reference_predictions, columns=columns)
+    cur_df = pd.DataFrame(current_predictions, columns=columns)
+
+    drift_result = detect_drift(ref_df, cur_df)
+
+    try:
+        push_drift_metrics(pushgateway_url, drift_result["drift_detected"], drift_result["drift_score"])
+    except Exception:
+        logger.warning("Failed to push drift metrics to Pushgateway", exc_info=True)
+
+    create_markdown_artifact(
+        key=f"drift-check-round-{round_num}",
+        markdown=(
+            f"## Round {round_num}: Drift Detection\n"
+            f"**MLflow Run:** `{run_id}`\n\n"
+            f"| Metric | Value |\n|--------|-------|\n"
+            f"| Drift Detected | {drift_result['drift_detected']} |\n"
+            f"| Drift Score | {drift_result['drift_score']:.4f} |\n"
+            f"| Columns Checked | {len(drift_result.get('column_drifts', {}))} |\n"
+        ),
+    )
+
+    logger.info(
+        "Round %d drift check: detected=%s score=%.4f",
+        round_num,
+        drift_result["drift_detected"],
+        drift_result["drift_score"],
+    )
+    return drift_result
+
+
+@task(name="version-data")
+def version_data_task(
+    data_dir: str,
+    round_num: int,
+    run_id: str = "",
+    mlflow_tracking_uri: str = "",
+    push_to_remote: bool = True,
+) -> dict[str, Any]:
+    """Version the dataset with DVC after data cleaning.
+
+    Args:
+        data_dir: Path to the dataset directory to track with DVC.
+        round_num: Current AL round number.
+        run_id: MLflow run ID to tag with data version hash.
+        mlflow_tracking_uri: MLflow tracking URI for tagging.
+        push_to_remote: Whether to push the new version to DVC remote.
+
+    Returns:
+        Dict with versioning results.
+    """
+    import yaml
+
+    result: dict[str, Any] = {
+        "round": round_num,
+        "dvc_added": False,
+        "dvc_pushed": False,
+        "data_hash": "",
+    }
+
+    if not Path(".dvc").exists():
+        logger.warning("DVC not initialized. Skipping data versioning.")
+        return result
+
+    # dvc add
+    try:
+        subprocess.run(
+            ["uv", "run", "dvc", "add", data_dir],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        result["dvc_added"] = True
+    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+        logger.warning("Round %d: DVC add failed: %s", round_num, exc)
+        return result
+
+    # Extract data hash from .dvc file
+    dvc_file = Path(f"{data_dir}.dvc")
+    if dvc_file.exists():
+        with open(dvc_file) as f:
+            dvc_meta = yaml.safe_load(f)
+        data_hash = dvc_meta.get("outs", [{}])[0].get("md5", "")
+        result["data_hash"] = data_hash
+
+        # Tag MLflow run with data version
+        if run_id and mlflow_tracking_uri and data_hash:
+            client = MlflowClient(mlflow_tracking_uri)
+            client.set_tag(run_id, "dvc.data_hash", data_hash)
+            logger.info("Tagged MLflow run %s with dvc.data_hash=%s", run_id, data_hash)
+
+    # dvc push
+    if push_to_remote:
+        try:
+            subprocess.run(
+                ["uv", "run", "dvc", "push"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            result["dvc_pushed"] = True
+        except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+            logger.warning("Round %d: DVC push failed: %s", round_num, exc)
+
+    create_markdown_artifact(
+        key=f"data-version-round-{round_num}",
+        markdown=(
+            f"## Round {round_num}: Data Versioning\n"
+            f"**MLflow Run:** `{run_id}`\n\n"
+            f"| Step | Result |\n|------|--------|\n"
+            f"| DVC Add | {'OK' if result['dvc_added'] else 'Failed'} |\n"
+            f"| DVC Push | {'OK' if result['dvc_pushed'] else 'Skipped'} |\n"
+            f"| Data Hash | `{result['data_hash'][:12]}...` |\n"
+        ),
+    )
+
     return result
 
 
@@ -341,10 +586,12 @@ def active_learning_demo(
     experiment_name: str = "active-learning-demo",
     mlflow_tracking_uri: str = "http://localhost:5050",
     registered_model_name: str = "cifar10-active-learning",
+    serving_url: str = "http://localhost:8000",
+    pushgateway_url: str = "http://localhost:9091",
 ) -> list[dict]:
     """Run Data-Centric Active Learning loop.
 
-    Each round: clean images -> train -> clean labels.
+    Each round: clean images -> train -> clean labels -> version data -> check drift.
 
     Args:
         data_dir: Path to noisy dataset.
@@ -357,12 +604,15 @@ def active_learning_demo(
         experiment_name: MLflow experiment name.
         mlflow_tracking_uri: MLflow URI.
         registered_model_name: Model registry name.
+        serving_url: Base URL of the serving API for auto-reload.
+        pushgateway_url: Prometheus Pushgateway URL for drift metrics.
 
     Returns:
         List of per-round result dictionaries.
     """
     all_results: list[dict] = []
     best_accuracy = 0.0
+    previous_predictions: np.ndarray | None = None
 
     for round_num in range(1, rounds + 1):
         logger.info("=" * 60)
@@ -386,6 +636,8 @@ def active_learning_demo(
             registered_model_name=registered_model_name,
         )
 
+        run_id = train_result.get("run_id", "")
+
         # Step 3: Clean labels (skip round 1 to establish baseline)
         label_result: dict = {}
         if round_num > 1:
@@ -395,20 +647,57 @@ def active_learning_demo(
                 mlflow_tracking_uri=mlflow_tracking_uri,
                 registered_model_name=registered_model_name,
                 num_classes=num_classes,
+                run_id=run_id,
             )
 
-        # Promote to champion if best accuracy
+        # Step 4: Version data with DVC
+        version_data_task(
+            data_dir=data_dir,
+            round_num=round_num,
+            run_id=run_id,
+            mlflow_tracking_uri=mlflow_tracking_uri,
+        )
+
+        # Step 5: Check prediction drift between rounds
+        val_preds = train_result.get("val_predictions")
+        drift_result = check_drift_task(
+            current_predictions=val_preds,
+            reference_predictions=previous_predictions,
+            round_num=round_num,
+            run_id=run_id,
+            pushgateway_url=pushgateway_url,
+        )
+        previous_predictions = val_preds
+
+        # Step 6: Promote to champion if best accuracy
         if train_result["best_val_accuracy"] > best_accuracy:
             best_accuracy = train_result["best_val_accuracy"]
             if train_result.get("model_version"):
                 client = MlflowClient(mlflow_tracking_uri)
                 client.set_registered_model_alias(
-                    registered_model_name, "champion", train_result["model_version"],
+                    registered_model_name,
+                    "champion",
+                    train_result["model_version"],
                 )
                 logger.info(
                     "New champion! Round %d, accuracy=%.4f, version=%s",
-                    round_num, best_accuracy, train_result["model_version"],
+                    round_num,
+                    best_accuracy,
+                    train_result["model_version"],
                 )
+
+                # Step 7: Notify serving API to reload champion model
+                try:
+                    reload_serving_model_task(
+                        serving_url=serving_url,
+                        model_name=registered_model_name,
+                        model_version="@champion",
+                    )
+                except Exception:
+                    logger.warning(
+                        "Failed to reload serving model (server may not be running)",
+                        exc_info=True,
+                    )
 
         round_result = {
             "round": round_num,
@@ -418,6 +707,9 @@ def active_learning_demo(
             "labels_removed": label_result.get("removed_labels", 0),
             "health_score": image_result.get("health_score", 0),
             "label_issue_rate": label_result.get("label_issue_rate", 0),
+            "drift_detected": drift_result.get("drift_detected", False),
+            "drift_score": drift_result.get("drift_score", 0.0),
+            "run_id": run_id,
         }
         all_results.append(round_result)
 
@@ -429,6 +721,8 @@ def active_learning_demo(
             "Train Samples": r["train_samples"],
             "Images Removed": r["images_removed"],
             "Labels Removed": r["labels_removed"],
+            "Drift Score": f"{r.get('drift_score', 0):.4f}",
+            "Run ID": r.get("run_id", "")[:8],
         }
         for r in all_results
     ]
@@ -444,14 +738,17 @@ def active_learning_demo(
 | Final Accuracy | {last_acc:.4f} |
 | Improvement | {improvement:+.4f} |
 | Best Accuracy | {best_accuracy:.4f} |
-| Initial Train Size | {all_results[0]['train_samples'] if all_results else 'N/A'} |
-| Final Train Size | {all_results[-1]['train_samples'] if all_results else 'N/A'} |
+| Initial Train Size | {all_results[0]["train_samples"] if all_results else "N/A"} |
+| Final Train Size | {all_results[-1]["train_samples"] if all_results else "N/A"} |
 """
     create_markdown_artifact(key="active-learning-final-summary", markdown=markdown)
 
     logger.info(
         "Active Learning complete! %d rounds, accuracy: %.4f -> %.4f (delta %+.4f)",
-        rounds, first_acc, last_acc, improvement,
+        rounds,
+        first_acc,
+        last_acc,
+        improvement,
     )
 
     return all_results
@@ -469,6 +766,8 @@ def main() -> None:
     parser.add_argument("--mlflow-uri", default="http://localhost:5050", help="MLflow URI")
     parser.add_argument("--experiment", default="active-learning-demo", help="MLflow experiment")
     parser.add_argument("--model-name", default="cifar10-active-learning", help="Registry name")
+    parser.add_argument("--serving-url", default="http://localhost:8000", help="Serving API URL")
+    parser.add_argument("--pushgateway-url", default="http://localhost:9091", help="Pushgateway URL")
     args = parser.parse_args()
 
     active_learning_demo(
@@ -482,6 +781,8 @@ def main() -> None:
         experiment_name=args.experiment,
         mlflow_tracking_uri=args.mlflow_uri,
         registered_model_name=args.model_name,
+        serving_url=args.serving_url,
+        pushgateway_url=args.pushgateway_url,
     )
 
 

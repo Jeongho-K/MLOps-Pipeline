@@ -9,27 +9,27 @@ echo "=== DVC Setup ==="
 # Initialize DVC if not already initialized
 if [ ! -d ".dvc" ]; then
     echo "[1/4] Initializing DVC..."
-    dvc init
+    uv run dvc init
 else
     echo "[1/4] DVC already initialized. Skipping."
 fi
 
 # Configure MinIO as the default remote
 echo "[2/4] Configuring MinIO remote..."
-if ! output=$(dvc remote add -d minio-remote s3://dvc-storage 2>&1); then
+if ! output=$(uv run dvc remote add -d minio-remote s3://dvc-storage 2>&1); then
     if echo "$output" | grep -q "already exists"; then
         echo "  Remote 'minio-remote' already exists. Updating configuration."
-        dvc remote modify minio-remote url s3://dvc-storage
+        uv run dvc remote modify minio-remote url s3://dvc-storage
     else
         echo "ERROR: Failed to add DVC remote: $output" >&2
         exit 1
     fi
 fi
 
-dvc remote modify minio-remote endpointurl "http://localhost:${MINIO_API_PORT:-9000}"
-dvc remote modify minio-remote access_key_id "${MINIO_ROOT_USER:-minioadmin}"
-dvc remote modify minio-remote secret_access_key "${MINIO_ROOT_PASSWORD:-minioadmin123}"
-dvc remote modify minio-remote use_ssl false
+uv run dvc remote modify minio-remote endpointurl "http://localhost:${MINIO_API_PORT:-9000}"
+uv run dvc remote modify minio-remote access_key_id "${MINIO_ROOT_USER:-minioadmin}"
+uv run dvc remote modify minio-remote secret_access_key "${MINIO_ROOT_PASSWORD:-minioadmin123}"
+uv run dvc remote modify minio-remote use_ssl false
 
 # Verify MinIO connectivity
 echo "[3/4] Verifying MinIO connectivity..."
@@ -46,6 +46,6 @@ echo "  Remote: minio-remote → s3://dvc-storage"
 echo "  Endpoint: http://localhost:${MINIO_API_PORT:-9000}"
 echo ""
 echo "Usage:"
-echo "  dvc add data/raw/<dataset>     # Track dataset"
-echo "  dvc push                        # Upload to MinIO"
-echo "  dvc pull                        # Download from MinIO"
+echo "  uv run dvc add data/raw/<dataset>   # Track dataset"
+echo "  uv run dvc push                      # Upload to MinIO"
+echo "  uv run dvc pull                      # Download from MinIO"

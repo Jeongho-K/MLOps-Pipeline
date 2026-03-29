@@ -21,6 +21,7 @@ class ModelInfoResponse(BaseModel):
 
     model_name: str = Field(description="Model registry name")
     model_version: str = Field(description="Model version")
+    mlflow_run_id: str = Field(default="", description="MLflow training run ID")
     num_classes: int = Field(description="Number of output classes")
     device: str = Field(description="Device the model is running on")
     image_size: int = Field(description="Expected input image size")

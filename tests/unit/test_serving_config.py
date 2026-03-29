@@ -10,7 +10,7 @@ class TestServingConfig:
         """Default config should have expected values."""
         config = ServingConfig()
         assert config.model_name == "cv-classifier"
-        assert config.model_version == "latest"
+        assert config.model_version == "@champion"
         assert config.mlflow_tracking_uri == "http://mlflow:5000"
         assert config.image_size == 224
         assert config.device == "auto"

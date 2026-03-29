@@ -70,7 +70,9 @@ def validate_images(data_dir: str) -> dict[str, Any]:
     report = validate_image_dataset(train_dir)
     logger.info(
         "Image validation: %d images, %d issues, health=%.2f",
-        report.total_images, report.issues_found, report.health_score,
+        report.total_images,
+        report.issues_found,
+        report.health_score,
     )
 
     result = report.to_dict()
@@ -85,9 +87,9 @@ def validate_images(data_dir: str) -> dict[str, Any]:
     markdown = f"""## Image Validation Report
 | Metric | Value |
 |--------|-------|
-| Total Images | {result.get('total_images', 'N/A')} |
-| Issues Found | {result.get('issues_found', 'N/A')} |
-| Health Score | {result.get('health_score', 0):.2f} |
+| Total Images | {result.get("total_images", "N/A")} |
+| Issues Found | {result.get("issues_found", "N/A")} |
+| Health Score | {result.get("health_score", 0):.2f} |
 
 ### Issue Breakdown
 | Issue Type | Count |
@@ -105,6 +107,8 @@ def validate_labels_task(
     device: str,
     num_classes: int,
     image_size: int = 224,
+    mlflow_run_id: str | None = None,
+    mlflow_tracking_uri: str | None = None,
 ) -> dict[str, Any]:
     """Validate labels using trained model predictions (post-hoc).
 
@@ -117,6 +121,8 @@ def validate_labels_task(
         device: Device string (cpu/cuda/mps).
         num_classes: Number of output classes.
         image_size: Input image size for transforms.
+        mlflow_run_id: If provided, log CleanLab metrics to this MLflow run.
+        mlflow_tracking_uri: MLflow tracking server URI (required with mlflow_run_id).
 
     Returns:
         Dict with label quality metrics from LabelReport.to_dict().
@@ -156,14 +162,24 @@ def validate_labels_task(
         result["avg_label_quality"],
     )
 
+    # Log CleanLab metrics to MLflow for traceability
+    if mlflow_run_id and mlflow_tracking_uri:
+        from mlflow import MlflowClient
+
+        client = MlflowClient(mlflow_tracking_uri)
+        client.log_metric(mlflow_run_id, "label_issues_found", result["label_issues_found"])
+        client.log_metric(mlflow_run_id, "avg_label_quality", result["avg_label_quality"])
+        client.log_metric(mlflow_run_id, "label_issue_rate", result["label_issue_rate"])
+        logger.info("Logged CleanLab metrics to MLflow run %s", mlflow_run_id)
+
     # Create Prefect artifact
     markdown = f"""## Label Validation Report (CleanLab)
 | Metric | Value |
 |--------|-------|
-| Total Samples | {result['total_samples']} |
-| Label Issues Found | {result['label_issues_found']} |
-| Label Issue Rate | {result['label_issue_rate']:.1%} |
-| Avg Label Quality | {result['avg_label_quality']:.3f} |
+| Total Samples | {result["total_samples"]} |
+| Label Issues Found | {result["label_issues_found"]} |
+| Label Issue Rate | {result["label_issue_rate"]:.1%} |
+| Avg Label Quality | {result["avg_label_quality"]:.3f} |
 """
     create_markdown_artifact(key="label-validation-report", markdown=markdown)
 
@@ -196,7 +212,7 @@ def ensure_data_available(data_dir: str) -> Path:
 
     logger.info("Data not found locally, pulling from DVC remote...")
     result = subprocess.run(  # noqa: S603
-        ["dvc", "pull", str(dvc_file)],
+        ["uv", "run", "dvc", "pull", str(dvc_file)],
         capture_output=True,
         text=True,
         check=True,
