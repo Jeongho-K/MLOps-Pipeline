@@ -114,166 +114,18 @@ make verify
 | PostgreSQL | localhost:5432 | mlops / mlops_secret |
 | Redis | localhost:6379 | - |
 
-## API 사용법
-
-### 헬스 체크
-
-```bash
-curl http://localhost/health
-```
-
-```json
-{
-  "status": "ok",
-  "model_loaded": true
-}
-```
-
-### 모델 정보 조회
-
-```bash
-curl http://localhost/model/info
-```
-
-```json
-{
-  "model_name": "cv-classifier",
-  "model_version": "1",
-  "num_classes": 10,
-  "device": "cpu",
-  "image_size": 224
-}
-```
-
-### 이미지 추론
-
-```bash
-curl -X POST http://localhost/predict \
-  -F "file=@image.jpg"
-```
-
-```json
-{
-  "predicted_class": 3,
-  "class_name": "cat",
-  "confidence": 0.95,
-  "probabilities": [0.01, 0.01, 0.02, 0.95, 0.01]
-}
-```
-
-### 모델 리로드
-
-```bash
-curl -X POST http://localhost/model/reload \
-  -H "Content-Type: application/json" \
-  -d '{"model_name": "cv-classifier", "model_version": "2"}'
-```
-
-```json
-{
-  "status": "ok",
-  "message": "Reloaded model 'cv-classifier' version '2'",
-  "model_info": {
-    "model_name": "cv-classifier",
-    "model_version": "2",
-    "num_classes": 10,
-    "device": "cpu",
-    "image_size": 224
-  }
-}
-```
-
-## 프로젝트 구조
-
-```
-MLOps-Pipeline/
-├── docker-compose.yml          # 전체 서비스 정의
-├── docker-compose.override.yml # GPU/개발 오버라이드
-├── Makefile                    # 공통 명령어
-├── pyproject.toml              # Python 프로젝트 설정
-├── .env.example                # 환경변수 템플릿
-├── docker/                     # 서비스별 Dockerfile
-│   ├── mlflow/                 # MLflow (+ psycopg2, boto3)
-│   ├── serving/                # FastAPI + Gunicorn
-│   ├── nginx/                  # 리버스 프록시
-│   └── monitoring/             # 모니터링 서비스
-├── src/                        # 소스 코드 (레이어별)
-│   ├── data/                   # Layer 2: 전처리, 검증
-│   │   ├── preprocessing/      # 이미지 변환 (augmentation)
-│   │   └── validation/         # CleanVision, CleanLab
-│   ├── training/               # Layer 3: 모델 학습
-│   │   ├── configs/            # TrainConfig (Pydantic)
-│   │   ├── models/             # 분류기 생성 (ResNet, EfficientNet, MobileNet)
-│   │   └── trainers/           # 학습 루프 + MLflow 트래킹
-│   ├── orchestration/          # Layer 4: 워크플로우 관리
-│   │   ├── flows/              # Prefect 파이프라인
-│   │   └── tasks/              # 데이터/학습 태스크
-│   ├── serving/                # Layer 5: 모델 서빙
-│   │   ├── api/                # FastAPI 앱, 라우트, 스키마
-│   │   ├── gunicorn/           # 워커 설정
-│   │   └── nginx/              # Nginx 설정
-│   └── monitoring/             # Layer 6: 관측성
-│       └── evidently/          # 드리프트 감지
-├── configs/                    # 서비스 설정 파일
-│   ├── prometheus/             # Prometheus 스크랩 설정
-│   ├── grafana/                # 대시보드, 데이터소스
-│   └── nginx/                  # Nginx 메인 설정
-├── tests/                      # 테스트
-│   ├── unit/                   # 단위 테스트
-│   ├── integration/            # 통합 테스트
-│   └── e2e/                    # E2E 테스트
-├── scripts/                    # 초기화 스크립트
-├── examples/                   # 예제 스크립트
-└── docs/                       # 문서 (Korean)
-```
-
-## Make 명령어
-
-| 명령어 | 설명 |
-|--------|------|
-| `make install` | 의존성 설치 (uv sync) |
-| `make up` | 전체 서비스 시작 |
-| `make down` | 전체 서비스 중지 |
-| `make down-v` | 서비스 중지 + 볼륨 삭제 |
-| `make ps` | 서비스 상태 확인 |
-| `make logs SERVICE=mlflow` | 서비스 로그 확인 |
-| `make seed` | MinIO 버킷 및 MLflow 실험 초기화 |
-| `make train` | 기본 설정으로 학습 실행 |
-| `make pipeline` | 전체 파이프라인 1회 실행 (데이터 → 검증 → 학습) |
-| `make pipeline-serve` | 스케줄 파이프라인 서빙 (기본: 주 1회) |
-| `make lint` | Ruff 린터 실행 |
-| `make format` | Ruff 포매터 실행 |
-| `make test` | 단위 테스트 실행 |
-| `make test-integration` | 통합 테스트 실행 |
-| `make test-e2e` | E2E 테스트 실행 |
-| `make verify` | 인프라 상태 점검 |
-| `make drift-check` | 드리프트 감지 수동 실행 |
-
-## 지원 모델
-
-| 모델 | 설명 | 파라미터 수 |
-|------|------|------------|
-| ResNet-18 | 기본 모델 | 11.7M |
-| ResNet-34 | | 21.8M |
-| ResNet-50 | | 25.6M |
-| EfficientNet-B0 | 효율적 아키텍처 | 5.3M |
-| EfficientNet-B1 | | 7.8M |
-| MobileNet V3 Small | 모바일/엣지 | 2.5M |
-| MobileNet V3 Large | | 5.5M |
-
 ## 문서
 
 | 문서 | 설명 |
 |------|------|
-| [아키텍처](docs/architecture.md) | 전체 시스템 구조 및 데이터 흐름 다이어그램 |
-| [설치 가이드](docs/setup-guide.md) | 사전 요구사항 및 설치/실행 방법 |
-| [Layer 1: Infrastructure](docs/layer-1-infrastructure.md) | Docker Compose, PostgreSQL, MinIO, Redis 상세 |
-| [Layer 2: Data Pipeline](docs/layer-2-data-pipeline.md) | DVC, CleanLab, CleanVision 데이터 파이프라인 상세 |
-| [Layer 3: Training](docs/layer-3-training.md) | PyTorch 학습 루프, MLflow 트래킹 상세 |
-| [Layer 4: Orchestration](docs/layer-4-orchestration.md) | Prefect 워크플로우 오케스트레이션 상세 |
-| [Layer 5: Serving](docs/layer-5-serving.md) | FastAPI, Gunicorn, Nginx 서빙 레이어 상세 |
-| [Layer 6: Monitoring](docs/layer-6-monitoring.md) | Evidently, Prometheus, Grafana 모니터링 상세 |
-| [개선 사항](docs/improvements.md) | 프로젝트 개선 기록 |
+| [아키텍처](docs/architecture.md) | 시스템 구조, 데이터 플로우, 레이어 요약 |
+| [설치 가이드](docs/setup-guide.md) | 설치, 실행, Make 명령어, 문제 해결 |
+| [Layer 1: Infrastructure](docs/layer-1-infrastructure.md) | Docker Compose, PostgreSQL, MinIO, Redis |
+| [Layer 2: Data Pipeline](docs/layer-2-data-pipeline.md) | DVC, CleanVision, CleanLab |
+| [Layer 3: Training](docs/layer-3-training.md) | PyTorch, MLflow 통합 |
+| [Layer 4: Orchestration](docs/layer-4-orchestration.md) | Prefect 워크플로우 |
+| [Layer 5: Serving](docs/layer-5-serving.md) | FastAPI, Gunicorn, Nginx, API 사용법 |
+| [Layer 6: Monitoring](docs/layer-6-monitoring.md) | Evidently, Prometheus, Grafana |
 
 ## 라이선스
 

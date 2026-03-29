@@ -22,7 +22,7 @@ graph LR
 ### 기본 실행 (데모 데이터셋)
 
 ```bash
-# 데모 데이터셋 준비 (Phase 2)
+# 데모 데이터셋 준비
 uv run python examples/image_classification/prepare_demo_data.py
 
 # 학습 실행 (기본 설정: ResNet18, 10 epochs)
@@ -85,16 +85,12 @@ uv run python -m src.training.train --registered-model-name ImageClassifier
 
 ### 접속 URI
 
-MLflow 서버의 접속 URI는 실행 환경에 따라 다릅니다:
+| 환경 | URI |
+|------|-----|
+| 로컬 개발 | `http://localhost:5050` (macOS 포트 5000 충돌 방지) |
+| Docker 내부 | `http://mlflow:5000` |
 
-| 환경 | URI | 설명 |
-|------|-----|------|
-| 로컬 개발 | `http://localhost:5050` | 기본값 (macOS에서 포트 5000 충돌 방지) |
-| Docker 내부 | `http://mlflow:5000` | Docker 네트워크 내부 서비스명 사용 |
-
-`MLFLOW_TRACKING_URI` 환경변수 또는 `TrainConfig`의 `mlflow_tracking_uri` 필드로 변경할 수 있습니다.
-
-> **참고:** macOS에서는 ControlCenter가 포트 5000을 사용하므로, 호스트에서 접속 시 `.env`의 `MLFLOW_PORT=5050`을 사용합니다. Docker 내부에서는 컨테이너 포트 5000을 직접 사용합니다.
+`TRAIN_MLFLOW_TRACKING_URI` 환경변수로 변경 가능.
 
 ### 자동 트래킹 항목
 
@@ -112,6 +108,57 @@ uv run python -m src.training.train --registered-model-name ImageClassifier
 # http://localhost:5050/#/models/ImageClassifier
 ```
 
+### 고급 기능
+
+**Autolog**
+
+`mlflow.pytorch.autolog()`로 optimizer 파라미터, gradient norm 등을 자동 기록할 수 있다.
+현재는 수동 로깅(`log_params`, `log_metrics`)을 사용 중이다.
+
+```python
+mlflow.pytorch.autolog(log_models=False)  # best model은 수동 저장 유지
+```
+
+**시스템 메트릭 로깅**
+
+GPU 메모리, CPU 사용률, 디스크 I/O를 자동 수집한다. `psutil`, `pynvml` 패키지 필요.
+
+```python
+mlflow.enable_system_metrics_logging()
+```
+
+**모델 시그니처 & Input Example**
+
+서빙 시 입력 형식을 검증하고 문서화한다:
+
+```python
+from mlflow.models import infer_signature
+
+signature = infer_signature(sample_input.numpy(), sample_output.cpu().numpy())
+mlflow.pytorch.log_model(model, name="model", signature=signature, input_example=sample_input.numpy())
+```
+
+**모델 별칭 (Champion/Challenger)**
+
+버전 번호 대신 별칭으로 모델을 관리한다:
+
+```python
+client = MlflowClient()
+client.set_registered_model_alias("ImageClassifier", "champion", version=model_version)
+
+# 서빙에서 champion 로드
+model = mlflow.pytorch.load_model("models:/ImageClassifier@champion")
+```
+
+**Run 태그 & 검색**
+
+태그로 실험을 분류하고 프로그래밍 방식으로 검색한다:
+
+```python
+mlflow.set_tags({"model_type": "resnet18", "dataset": "cifar10"})
+runs = mlflow.search_runs(filter_string="metrics.val_accuracy > 0.8", order_by=["metrics.val_accuracy DESC"])
+```
+
 ## 디바이스 선택
 
 `device` 설정에 따라 자동으로 최적 디바이스를 선택합니다:
@@ -119,3 +166,11 @@ uv run python -m src.training.train --registered-model-name ImageClassifier
 2. `cuda`: NVIDIA GPU 사용
 3. `mps`: Apple Silicon GPU 사용
 4. `cpu`: CPU 사용
+
+## 개선 방향
+
+- **Autolog 활성화**: optimizer 파라미터 등 누락 정보 자동 보완
+- **시스템 메트릭**: GPU 메모리/CPU 병목 사후 분석
+- **모델 시그니처**: 서빙 시 입력 검증 강화
+- **별칭 기반 서빙**: `MODEL_VERSION=@champion`으로 무중단 교체
+- **MLflow Tracking URI 통일**: `.env.example`에 `TRAIN_MLFLOW_TRACKING_URI` 추가, 코드 기본값을 `http://localhost:5000`으로 통일

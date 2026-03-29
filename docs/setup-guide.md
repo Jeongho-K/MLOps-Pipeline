@@ -1,7 +1,5 @@
 # 설치 및 실행 가이드
 
-> **참고:** `make up`, `make seed` 등 Docker 관련 명령은 Phase 1(Infrastructure) 구현 후 사용할 수 있습니다.
-
 ## 사전 요구사항
 
 | 도구 | 최소 버전 | 설치 확인 |
@@ -66,28 +64,29 @@ nvidia-smi
 docker run --rm --gpus all nvidia/cuda:12.6.3-runtime-ubuntu22.04 nvidia-smi
 ```
 
-GPU 서비스는 `docker-compose.override.yml`에서 설정합니다 (Phase 3/5에서 활성화).
+GPU 서비스는 `docker-compose.override.yml`에서 설정합니다 (GPU 사용 시 활성화).
 
-## 유용한 명령어
+## 주요 명령어
 
-```bash
-make up              # 모든 서비스 시작
-make down            # 모든 서비스 중지
-make down-v          # 서비스 중지 + 볼륨 삭제 (데이터 초기화)
-make ps              # 서비스 상태 확인
-make logs SERVICE=mlflow  # 특정 서비스 로그 확인
-make seed            # 초기 데이터 설정
-make verify          # 인프라 상태 확인
-make train           # 학습 실행
-make pipeline        # 파이프라인 1회 실행
-make pipeline-serve  # 파이프라인 스케줄링
-make drift-check     # 드리프트 감지 실행
-make lint            # 코드 린트 검사
-make format          # 코드 포맷팅
-make test            # 단위 테스트 실행
-make test-integration  # 통합 테스트
-make test-e2e        # E2E 테스트
-```
+| 명령어 | 설명 |
+|--------|------|
+| `make install` | 의존성 설치 (uv sync) |
+| `make up` | 전체 서비스 시작 |
+| `make down` | 전체 서비스 중지 |
+| `make down-v` | 서비스 중지 + 볼륨 삭제 |
+| `make ps` | 서비스 상태 확인 |
+| `make logs SERVICE=mlflow` | 서비스 로그 확인 |
+| `make seed` | MinIO 버킷 및 MLflow 실험 초기화 |
+| `make train` | 기본 설정으로 학습 실행 |
+| `make pipeline` | 전체 파이프라인 1회 실행 (데이터 → 검증 → 학습) |
+| `make pipeline-serve` | 스케줄 파이프라인 서빙 (기본: 주 1회) |
+| `make drift-check` | 드리프트 감지 수동 실행 |
+| `make lint` | Ruff 린터 실행 |
+| `make format` | Ruff 포매터 실행 |
+| `make test` | 단위 테스트 실행 |
+| `make test-integration` | 통합 테스트 실행 |
+| `make test-e2e` | E2E 테스트 실행 |
+| `make verify` | 인프라 상태 점검 |
 
 ## 문제 해결
 

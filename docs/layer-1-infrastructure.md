@@ -14,14 +14,12 @@ graph TB
         MLF[MLflow Server<br/>:5000]
         PF[Prefect Server<br/>:4200]
         RD[(Redis<br/>:6379)]
-        MI[minio-init<br/>원샷]
     end
 
     MLF -->|메타데이터| PG
     PF -->|메타데이터| PG
     MLF -->|아티팩트| MIO
     PF -->|메시징| RD
-    MI -->|버킷 생성| MIO
 ```
 
 ## 서비스 상세
@@ -35,9 +33,9 @@ graph TB
 
 ### MinIO
 
-- **이미지:** `minio/minio:RELEASE.2025-09-07T16-13-09Z`
+- **이미지:** `mlops-pipeline/minio:2025.09.07` (커스텀 빌드: `docker/minio/Dockerfile`)
 - **용도:** S3 호환 오브젝트 스토리지 (MLflow 아티팩트, DVC 데이터, 모델 레지스트리)
-- **버킷:** (총 5개, `minio-init` 서비스가 자동 생성)
+- **버킷:** (총 5개, 커스텀 이미지의 entrypoint가 시작 시 자동 생성)
   - `mlflow-artifacts` — MLflow 실험 아티팩트
   - `dvc-storage` — DVC 데이터 버전 관리
   - `model-registry` — 프로덕션 모델 저장
@@ -73,16 +71,13 @@ graph TB
 graph LR
     PG[PostgreSQL] --> MLF[MLflow]
     PG --> PF[Prefect]
-    MIO[MinIO] --> MI[minio-init]
-    MIO --> MLF
-    MI --> MLF
+    MIO[MinIO] --> MLF
     RD[Redis] --> PF
 ```
 
 `depends_on` + `condition`으로 자동 관리:
 1. PostgreSQL, MinIO, Redis가 먼저 healthy 상태 도달
-2. minio-init이 버킷 생성 후 종료
-3. MLflow, Prefect가 시작
+2. MLflow, Prefect가 시작
 
 ## 환경변수
 
@@ -118,3 +113,8 @@ curl http://localhost:5000/health
 # 5. Prefect 접속
 curl http://localhost:4200/api/health
 ```
+
+## 개선 방향
+
+- **PostgreSQL healthcheck `start_period` 미설정**: 컨테이너 초기화 중 발생하는 헬스체크 실패를 무시하지 않아 의존 서비스가 조기에 재시도할 수 있습니다. `healthcheck.start_period: 30s` 추가를 권장합니다.
+- **MinIO 버킷 버전 관리 미활성화**: 현재 버킷에 오브젝트 버전 관리가 비활성화되어 있습니다. 아티팩트 덮어쓰기 보호와 이력 추적을 위해 버킷 초기화 시 `mc version enable local/mlflow-artifacts` 실행을 권장합니다.

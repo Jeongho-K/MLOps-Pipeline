@@ -49,7 +49,9 @@ FastAPI (/predict)
   "predicted_class": 2,
   "class_name": "bird",
   "confidence": 0.95,
-  "probabilities": [0.02, 0.03, 0.95]
+  "probabilities": [0.02, 0.03, 0.95],
+  "model_version": "1",
+  "mlflow_run_id": "a1b2c3d4e5f6..."
 }
 ```
 
@@ -75,6 +77,42 @@ FastAPI (/predict)
 - `evidently_drift_detected` — 드리프트 감지 여부 (0 또는 1)
 - `evidently_drift_score` — 드리프트된 컬럼 비율 (0.0~1.0)
 
+### 고급 기능
+
+**ColumnMapping**
+
+컬럼 역할을 명시적으로 지정하여 분석 안정성을 높인다:
+
+```python
+from evidently import ColumnMapping
+
+column_mapping = ColumnMapping(
+    prediction="predicted_class",
+    numerical_features=["confidence"],
+    categorical_features=["predicted_class"],
+)
+```
+
+**ClassificationPreset**
+
+실제 라벨(`actual_class`)을 확보한 경우, 정밀도/재현율/F1 등 분류 성능을 추적한다:
+
+```python
+from evidently.presets import ClassificationPreset
+
+report = Report([ClassificationPreset()])
+```
+
+**DataQualityPreset**
+
+드리프트 분석 전 데이터 품질(결측값, 이상값)을 선행 검사한다:
+
+```python
+from evidently.presets import DataQualityPreset
+
+report = Report([DataQualityPreset()])
+```
+
 ### 4. Prefect 모니터링 플로우
 
 **파일:** `src/orchestration/flows/monitoring_flow.py`
@@ -85,7 +123,12 @@ FastAPI (/predict)
 1. `fetch_prediction_logs` — MinIO에서 최근 N일 예측 로그 수집
 2. `fetch_reference_data` — 참조 데이터셋 로드
 3. `run_drift_detection` — Evidently 분석 + Pushgateway push
-4. `upload_drift_report` — HTML 리포트를 MinIO에 업로드
+4. `run_drift_quality_gate` — 드리프트 임계값 기반 품질 게이트
+5. `upload_drift_report` — HTML 리포트를 MinIO에 업로드
+
+**`fail_on_drift` 파라미터:**
+- `False` (기본): 드리프트 초과 시 경고 로그 후 계속 진행
+- `True`: `RuntimeError`를 발생시켜 파이프라인 중단
 
 **수동 실행:** `make drift-check`
 
@@ -142,4 +185,14 @@ FastAPI (/predict)
 
 ### MinIO 버킷 미생성
 - `make down-v && make up && make seed` 로 전체 초기화
-- 또는 수동 생성: `mc mb myminio/prediction-logs && mc mb myminio/drift-reports`
+- 커스텀 MinIO 이미지가 시작 시 버킷을 자동 생성하므로, 이 문제는 드물게 발생한다
+
+## 개선 방향
+
+| 항목 | 우선순위 | 설명 |
+|------|---------|------|
+| Prometheus retention 설정 | 중간 | `--storage.tsdb.retention.time=30d --storage.tsdb.retention.size=8GB` 플래그 추가 |
+| Grafana Alerting | 높음 | `configs/grafana/provisioning/alerting/`에 드리프트 임계값 알림 규칙 추가 |
+| ColumnMapping 적용 | 낮음 | `detect_drift()`에 명시적 컬럼 매핑 전달 |
+| ClassificationPreset | 중간 | 실제 라벨 확보 시 분류 성능 모니터링 |
+| Per-column Prometheus 메트릭 | 낮음 | `evidently_column_drift_score` 라벨별 세분화 |
