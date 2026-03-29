@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +39,7 @@ from mlflow.models import infer_signature
 from prefect import flow, task
 from prefect.artifacts import create_markdown_artifact, create_table_artifact
 from prefect.runtime import flow_run as flow_run_runtime
+from prefect.transactions import transaction
 from torch.utils.data import DataLoader
 from torchvision.datasets import ImageFolder
 
@@ -492,72 +492,39 @@ def version_data_task(
     round_num: int,
     run_id: str = "",
     mlflow_tracking_uri: str = "",
-    push_to_remote: bool = True,
 ) -> dict[str, Any]:
     """Version the dataset with DVC after data cleaning.
+
+    Uses DVCManager Python API for add/push/verify operations.
+    Supports Prefect transaction rollback via on_rollback handler.
 
     Args:
         data_dir: Path to the dataset directory to track with DVC.
         round_num: Current AL round number.
         run_id: MLflow run ID to tag with data version hash.
         mlflow_tracking_uri: MLflow tracking URI for tagging.
-        push_to_remote: Whether to push the new version to DVC remote.
 
     Returns:
-        Dict with versioning results.
+        Dict with versioning results from VersioningResult.to_dict().
     """
-    import yaml
-
-    result: dict[str, Any] = {
-        "round": round_num,
-        "dvc_added": False,
-        "dvc_pushed": False,
-        "data_hash": "",
-    }
+    from src.data.versioning import DVCManager
 
     if not Path(".dvc").exists():
         logger.warning("DVC not initialized. Skipping data versioning.")
-        return result
+        return {"round": round_num, "dvc_added": False, "dvc_pushed": False, "data_hash": ""}
 
-    # dvc add
+    manager = DVCManager()
     try:
-        subprocess.run(
-            ["uv", "run", "dvc", "add", data_dir],
-            capture_output=True,
-            text=True,
-            check=True,
+        result = manager.version_round(
+            data_dir=data_dir,
+            round_num=round_num,
+            run_id=run_id,
+            mlflow_tracking_uri=mlflow_tracking_uri,
         )
-        result["dvc_added"] = True
-    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
-        logger.warning("Round %d: DVC add failed: %s", round_num, exc)
-        return result
+    finally:
+        manager.close()
 
-    # Extract data hash from .dvc file
-    dvc_file = Path(f"{data_dir}.dvc")
-    if dvc_file.exists():
-        with open(dvc_file) as f:
-            dvc_meta = yaml.safe_load(f)
-        data_hash = dvc_meta.get("outs", [{}])[0].get("md5", "")
-        result["data_hash"] = data_hash
-
-        # Tag MLflow run with data version
-        if run_id and mlflow_tracking_uri and data_hash:
-            client = MlflowClient(mlflow_tracking_uri)
-            client.set_tag(run_id, "dvc.data_hash", data_hash)
-            logger.info("Tagged MLflow run %s with dvc.data_hash=%s", run_id, data_hash)
-
-    # dvc push
-    if push_to_remote:
-        try:
-            subprocess.run(
-                ["uv", "run", "dvc", "push"],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            result["dvc_pushed"] = True
-        except (subprocess.CalledProcessError, FileNotFoundError) as exc:
-            logger.warning("Round %d: DVC push failed: %s", round_num, exc)
+    result_dict = result.to_dict()
 
     create_markdown_artifact(
         key=f"data-version-round-{round_num}",
@@ -565,13 +532,88 @@ def version_data_task(
             f"## Round {round_num}: Data Versioning\n"
             f"**MLflow Run:** `{run_id}`\n\n"
             f"| Step | Result |\n|------|--------|\n"
-            f"| DVC Add | {'OK' if result['dvc_added'] else 'Failed'} |\n"
-            f"| DVC Push | {'OK' if result['dvc_pushed'] else 'Skipped'} |\n"
-            f"| Data Hash | `{result['data_hash'][:12]}...` |\n"
+            f"| DVC Add | {'OK' if result_dict['dvc_added'] else 'Failed'} |\n"
+            f"| DVC Push | {'OK' if result_dict['dvc_pushed'] else 'Skipped'} |\n"
+            f"| Checksum Verified | {'OK' if result_dict['checksum_verified'] else 'N/A'} |\n"
+            f"| Data Hash | `{result_dict['data_hash'][:12]}...` |\n"
         ),
     )
 
-    return result
+    return result_dict
+
+
+@version_data_task.on_rollback
+def rollback_version_data(txn: transaction) -> None:
+    """Rollback data to the previous DVC state on transaction failure."""
+    from src.data.versioning import DVCManager
+
+    data_dir = txn.get("data_dir", "")
+    round_num = txn.get("round_num", "?")
+    logger.warning("Rolling back data versioning for round %s", round_num)
+
+    manager = DVCManager()
+    try:
+        manager.checkout(target=data_dir)
+    finally:
+        manager.close()
+
+
+@task(name="snapshot-intermediate-data")
+def snapshot_intermediate_data_task(
+    data_dir: str,
+    round_num: int,
+    stage: str,
+    previous_hash: str = "",
+    cleaning_stats: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Capture intermediate data state during an active learning round.
+
+    Creates a local DVC snapshot (no push) for tracking data evolution
+    within each round. Snapshots are chained via previous_hash.
+
+    Args:
+        data_dir: Path to the dataset directory.
+        round_num: Current AL round number.
+        stage: Stage name (e.g. "pre-clean", "post-image-clean", "post-label-clean").
+        previous_hash: Hash from the previous snapshot for chain linking.
+        cleaning_stats: Optional cleaning statistics to record.
+
+    Returns:
+        Dict with snapshot metadata from RoundSnapshot.to_dict().
+    """
+    from src.data.versioning import DVCConfig, DVCManager, RoundSnapshot
+
+    config = DVCConfig(push_to_remote=False, verify_checksum=False)
+    manager = DVCManager(config=config)
+    try:
+        data_hash = manager.add(data_dir)
+    except (FileNotFoundError, RuntimeError):
+        logger.warning("Round %d/%s: Snapshot failed for %s", round_num, stage, data_dir, exc_info=True)
+        data_hash = ""
+    finally:
+        manager.close()
+
+    train_dir = Path(data_dir) / "train"
+    sample_count = sum(1 for _ in train_dir.rglob("*.png")) if train_dir.exists() else 0
+
+    snapshot = RoundSnapshot(
+        round_num=round_num,
+        data_hash=data_hash,
+        sample_count=sample_count,
+        stage=stage,
+        cleaning_stats=cleaning_stats or {},
+        previous_hash=previous_hash,
+    )
+
+    logger.info(
+        "Round %d/%s snapshot: hash=%s samples=%d",
+        round_num,
+        stage,
+        data_hash[:12] if data_hash else "N/A",
+        sample_count,
+    )
+
+    return snapshot.to_dict()
 
 
 @flow(name="active-learning-demo", log_prints=True)
@@ -613,52 +655,84 @@ def active_learning_demo(
     all_results: list[dict] = []
     best_accuracy = 0.0
     previous_predictions: np.ndarray | None = None
+    last_data_hash = ""
 
     for round_num in range(1, rounds + 1):
         logger.info("=" * 60)
         logger.info("ACTIVE LEARNING ROUND %d/%d", round_num, rounds)
         logger.info("=" * 60)
 
-        # Step 1: Clean images
-        image_result = clean_images_task(data_dir, round_num)
+        with transaction() as txn:
+            txn.set("round_num", round_num)
+            txn.set("data_dir", data_dir)
 
-        # Step 2: Train
-        train_result = train_round_task(
-            data_dir=data_dir,
-            round_num=round_num,
-            model_name=model_name,
-            num_classes=num_classes,
-            epochs=epochs_per_round,
-            batch_size=batch_size,
-            learning_rate=learning_rate,
-            experiment_name=experiment_name,
-            mlflow_tracking_uri=mlflow_tracking_uri,
-            registered_model_name=registered_model_name,
-        )
-
-        run_id = train_result.get("run_id", "")
-
-        # Step 3: Clean labels (skip round 1 to establish baseline)
-        label_result: dict = {}
-        if round_num > 1:
-            label_result = clean_labels_task(
+            # Snapshot: pre-clean state
+            pre_snapshot = snapshot_intermediate_data_task(
                 data_dir=data_dir,
                 round_num=round_num,
-                mlflow_tracking_uri=mlflow_tracking_uri,
-                registered_model_name=registered_model_name,
-                num_classes=num_classes,
-                run_id=run_id,
+                stage="pre-clean",
+                previous_hash=last_data_hash,
             )
 
-        # Step 4: Version data with DVC
-        version_data_task(
-            data_dir=data_dir,
-            round_num=round_num,
-            run_id=run_id,
-            mlflow_tracking_uri=mlflow_tracking_uri,
-        )
+            # Step 1: Clean images
+            image_result = clean_images_task(data_dir, round_num)
 
-        # Step 5: Check prediction drift between rounds
+            # Snapshot: post-image-clean state
+            post_image_snapshot = snapshot_intermediate_data_task(
+                data_dir=data_dir,
+                round_num=round_num,
+                stage="post-image-clean",
+                previous_hash=pre_snapshot.get("data_hash", ""),
+                cleaning_stats={"images_removed": image_result.get("removed_images", 0)},
+            )
+
+            # Step 2: Train
+            train_result = train_round_task(
+                data_dir=data_dir,
+                round_num=round_num,
+                model_name=model_name,
+                num_classes=num_classes,
+                epochs=epochs_per_round,
+                batch_size=batch_size,
+                learning_rate=learning_rate,
+                experiment_name=experiment_name,
+                mlflow_tracking_uri=mlflow_tracking_uri,
+                registered_model_name=registered_model_name,
+            )
+
+            run_id = train_result.get("run_id", "")
+
+            # Step 3: Clean labels (skip round 1 to establish baseline)
+            label_result: dict = {}
+            if round_num > 1:
+                label_result = clean_labels_task(
+                    data_dir=data_dir,
+                    round_num=round_num,
+                    mlflow_tracking_uri=mlflow_tracking_uri,
+                    registered_model_name=registered_model_name,
+                    num_classes=num_classes,
+                    run_id=run_id,
+                )
+
+                # Snapshot: post-label-clean state
+                snapshot_intermediate_data_task(
+                    data_dir=data_dir,
+                    round_num=round_num,
+                    stage="post-label-clean",
+                    previous_hash=post_image_snapshot.get("data_hash", ""),
+                    cleaning_stats={"labels_removed": label_result.get("removed_labels", 0)},
+                )
+
+            # Step 4: Version data with DVC (final, pushes to remote)
+            version_result = version_data_task(
+                data_dir=data_dir,
+                round_num=round_num,
+                run_id=run_id,
+                mlflow_tracking_uri=mlflow_tracking_uri,
+            )
+            last_data_hash = version_result.get("data_hash", "")
+
+        # Step 5: Check prediction drift between rounds (outside transaction)
         val_preds = train_result.get("val_predictions")
         drift_result = check_drift_task(
             current_predictions=val_preds,

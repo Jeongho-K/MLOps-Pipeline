@@ -196,16 +196,24 @@ def validate_labels_task(
 
 
 @task(name="ensure-data-available", retries=2, retry_delay_seconds=30)
-def ensure_data_available(data_dir: str) -> Path:
+def ensure_data_available(data_dir: str, verify: bool = True) -> Path:
     """Pull dataset from DVC remote if not present locally.
+
+    Uses DVCManager Python API instead of subprocess calls.
+    Optionally verifies data integrity after pull via checksum validation.
 
     Args:
         data_dir: Path to the dataset directory.
+        verify: Whether to verify checksum after pull.
 
     Returns:
         Resolved dataset path.
+
+    Raises:
+        FileNotFoundError: If dataset directory and .dvc file are both missing.
+        RuntimeError: If checksum verification fails after pull.
     """
-    import subprocess
+    from src.data.versioning import DVCManager
 
     path = Path(data_dir)
     if path.exists():
@@ -220,11 +228,16 @@ def ensure_data_available(data_dir: str) -> Path:
         )
 
     logger.info("Data not found locally, pulling from DVC remote...")
-    result = subprocess.run(  # noqa: S603
-        ["uv", "run", "dvc", "pull", str(dvc_file)],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    logger.info("DVC pull completed: %s", result.stdout.strip())
+    manager = DVCManager()
+    try:
+        success = manager.pull(str(dvc_file))
+        if not success:
+            raise RuntimeError(f"DVC pull failed for {dvc_file}")
+
+        if verify and not manager.verify_checksum(str(dvc_file)):
+            raise RuntimeError(f"Checksum verification failed for {dvc_file}. Data may be corrupted or incomplete.")
+        logger.info("DVC pull completed with integrity verification for %s", dvc_file)
+    finally:
+        manager.close()
+
     return path
