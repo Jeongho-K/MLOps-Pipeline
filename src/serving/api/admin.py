@@ -55,4 +55,4 @@ async def trigger_retraining(
         raise HTTPException(
             status_code=503,
             detail="Failed to trigger deployment. Check Prefect server.",
-        )
+        ) from None
