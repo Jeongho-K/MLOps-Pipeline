@@ -6,14 +6,12 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
 ![Prefect](https://img.shields.io/badge/Prefect-3.6-070E10?logo=prefect&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker_Compose-✓-2496ED?logo=docker&logoColor=white)
-![License](https://img.shields.io/badge/License-MIT-green)
+![License](https://img.shields.io/badge/License-Apache_2.0-blue)
 ![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)
 
-> 대부분의 MLOps 파이프라인은 deploy에서 끝난다. data-flywheel은 거기서 시작한다.
+> 대부분의 MLOps는 deploy에서 끝난다. data-flywheel은 거기서 시작한다.
 >
-> 서빙 중인 모든 예측을 학습 자산으로 전환하는 폐루프 ML 플랫폼.
-> High confidence → 자동 축적, Low confidence → human review, 그리고 자동 재학습.
-> 온프레미스, CV-first, domain-agnostic by design.
+> 서빙 데이터를 자동으로 학습 자산으로 순환시키는 온프레미스 ML 플랫폼.
 
 ## 주요 특징
 
@@ -131,4 +129,4 @@ make verify
 
 ## 라이선스
 
-MIT License
+Apache License 2.0
