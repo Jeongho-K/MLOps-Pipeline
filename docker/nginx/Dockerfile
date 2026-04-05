@@ -8,6 +8,7 @@ RUN rm /etc/nginx/conf.d/default.conf
 
 # Copy custom configuration
 COPY configs/nginx/nginx.conf /etc/nginx/nginx.conf
+COPY configs/nginx/upstream.conf /etc/nginx/conf.d/upstream.conf
 COPY src/serving/nginx/nginx.conf /etc/nginx/conf.d/api.conf
 
 EXPOSE 80

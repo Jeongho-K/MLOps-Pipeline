@@ -243,6 +243,9 @@ def continuous_training_flow(
         mlflow_tracking_uri=mlflow_tracking_uri,
     )
 
+    # Step 9: Trigger canary deployment (Phase C)
+    deployment_result = _trigger_canary_deployment(trigger_source)
+
     # Summary
     summary = {
         "status": "completed",
@@ -254,11 +257,38 @@ def continuous_training_flow(
         "g2_result": g2_result,
         "g3_result": g3_result,
         "promotion": promotion_result,
+        "deployment": deployment_result,
     }
 
     _create_summary_artifact(summary)
     logger.info("Continuous training round %d complete: %s", current_round, summary)
     return summary
+
+
+def _trigger_canary_deployment(trigger_source: str) -> dict:
+    """Trigger the canary deployment flow as a subflow.
+
+    Best-effort: logs warning if deployment fails but does not
+    block the continuous training pipeline result.
+
+    Args:
+        trigger_source: What triggered the continuous training.
+
+    Returns:
+        Deployment result dict, or error info on failure.
+    """
+    try:
+        from src.orchestration.flows.deployment_flow import deployment_flow
+
+        result = deployment_flow(trigger_source=f"ct_{trigger_source}")
+        logger.info("Canary deployment completed: %s", result.get("status"))
+        return result
+    except Exception:
+        logger.warning(
+            "Canary deployment failed. Champion was promoted but not deployed via canary.",
+            exc_info=True,
+        )
+        return {"status": "failed", "reason": "deployment_flow exception"}
 
 
 def _version_data(

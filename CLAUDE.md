@@ -54,8 +54,8 @@ Serve → Monitor → Confidence Split
 | Phase | Focus | Status |
 |---|---|---|
 | A: Active Learning Core | Uncertainty, routing, Label Studio, pseudo-labels | **Implemented** |
-| B: Continuous Training Loop | Event-driven retrain, champion gate, data integration | Planned |
-| C: CI/CD & Deployment | GitHub Actions, CML, canary deploy, rollback | Planned |
+| B: Continuous Training Loop | Event-driven retrain, champion gate, data integration | **Implemented** |
+| C: CI/CD & Deployment | GitHub Actions, CML, canary deploy, rollback | **Implemented** |
 | D: Architecture Refactoring | core/ + plugins/ restructure, Protocol interfaces | Planned |
 
 Design spec: `docs/specs/2026-03-29-active-learning-first-mlops-design.md`

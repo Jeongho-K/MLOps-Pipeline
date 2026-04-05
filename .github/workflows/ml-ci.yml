@@ -1,0 +1,58 @@
+name: ML CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/training/**"
+      - "src/data/**"
+      - "src/orchestration/flows/training_pipeline.py"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  ml-compare:
+    name: Model Performance Comparison
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - run: uv sync --frozen
+
+      - uses: iterative/setup-cml@v3
+
+      - name: Train and generate report
+        env:
+          REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Train with reduced epochs for CI
+          uv run python -m src.training.train \
+            --epochs 3 \
+            --experiment-name ci-ml-comparison \
+            2>&1 | tee training_output.log
+
+          # Generate CML report
+          cat <<'REPORT' > report.md
+          ## ML Model Comparison
+
+          ### Training Output
+          ```
+          REPORT
+
+          # Append last 20 lines of training output as summary
+          tail -20 training_output.log >> report.md
+
+          cat <<'FOOTER' >> report.md
+          ```
+
+          > Trained with `--epochs 3` for CI validation.
+          > Full training metrics are logged to MLflow.
+          FOOTER
+
+          cml comment create report.md

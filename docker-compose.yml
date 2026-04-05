@@ -152,6 +152,39 @@ services:
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
+  # Inference API (Canary) - Challenger model for canary deployment (Phase C)
+  # ---------------------------------------------------------------------------
+  api-canary:
+    build:
+      context: .
+      dockerfile: docker/serving/Dockerfile
+    image: data-flywheel/api:0.1.0
+    profiles: ["canary"]
+    environment:
+      SERVING_MODEL_NAME: ${SERVING_MODEL_NAME:-cv-classifier}
+      SERVING_MODEL_VERSION: "@challenger"
+      SERVING_MLFLOW_TRACKING_URI: http://mlflow:5000
+      SERVING_DEVICE: ${SERVING_DEVICE:-auto}
+      SERVING_IMAGE_SIZE: ${SERVING_IMAGE_SIZE:-224}
+      SERVING_CLASS_NAMES: ${SERVING_CLASS_NAMES:-}
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      GUNICORN_WORKERS: ${GUNICORN_CANARY_WORKERS:-1}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      mlflow:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
   # Nginx - Reverse proxy for inference API (Phase 5)
   # ---------------------------------------------------------------------------
   nginx:

@@ -12,6 +12,11 @@ scrape_configs:
       - targets: ["api:8000"]
     metrics_path: /metrics
 
+  - job_name: "api-canary"
+    static_configs:
+      - targets: ["api-canary:8000"]
+    metrics_path: /metrics
+
   - job_name: "pushgateway"
     honor_labels: true
     static_configs:

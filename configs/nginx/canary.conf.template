@@ -1,0 +1,4 @@
+upstream api_backend {{
+    server api:8000 weight={champion_weight};
+    server api-canary:8000 weight={canary_weight};
+}}

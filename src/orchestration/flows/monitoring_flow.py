@@ -389,13 +389,33 @@ def monitoring_pipeline(
         secret_key=s3_secret_key,
     )
 
-    # Step 6: Trigger retraining if drift detected
-    if drift_gate_failed and trigger_retraining_on_drift:
-        _trigger_retraining_on_drift()
+    # Step 6: G5 Runtime Gate — severity-based auto-response
+    g5_result: dict[str, Any] = {}
+    if drift_gate_failed:
+        from src.orchestration.tasks.runtime_gate import evaluate_runtime_gate
+
+        g5_result = evaluate_runtime_gate(
+            drift_score=drift_result.get("drift_score", 0.0),
+            drift_detected=drift_result.get("drift_detected", False),
+        )
+
+        if g5_result["action"] == "rollback_and_retrain":
+            logger.warning("G5 HIGH severity — triggering rollback and retraining")
+            _trigger_rollback()
+            if trigger_retraining_on_drift:
+                _trigger_retraining_on_drift()
+        elif g5_result["action"] == "trigger_active_learning":
+            logger.info("G5 MEDIUM severity — triggering AL pipeline and retraining")
+            _trigger_active_learning_pipeline()
+            if trigger_retraining_on_drift:
+                _trigger_retraining_on_drift()
+        else:
+            logger.info("G5 LOW severity — logging only, no action taken")
 
     result: dict[str, Any] = {
         **drift_result,
         "report_s3_key": report_key,
+        "g5_result": g5_result,
         "status": "completed",
     }
     logger.info("Monitoring pipeline complete: %s", result)
@@ -421,3 +441,44 @@ def _trigger_retraining_on_drift() -> None:
         logger.info("Triggered continuous training due to drift detection.")
     except Exception:
         logger.warning("Failed to trigger retraining on drift.", exc_info=True)
+
+
+def _trigger_rollback() -> None:
+    """Request the champion container to reload its current model.
+
+    This forces the serving container to re-fetch the @champion model
+    artifact from MLflow, which acts as a safety reload. A full version
+    rollback (reverting the @champion alias to a prior version) is not
+    yet implemented and would require MLflow alias management.
+
+    Best-effort: logs warning if the reload request fails.
+    """
+    try:
+        import httpx
+
+        from src.orchestration.config_deployment import DeploymentConfig
+
+        config = DeploymentConfig()
+        response = httpx.post(config.champion_reload_url, timeout=60.0)
+        response.raise_for_status()
+        logger.info("Rollback triggered: champion model reload requested.")
+    except Exception:
+        logger.warning("Failed to trigger rollback.", exc_info=True)
+
+
+def _trigger_active_learning_pipeline() -> None:
+    """Trigger the active learning pipeline to increase data collection.
+
+    Best-effort: logs warning if triggering fails.
+    """
+    try:
+        from prefect.deployments import run_deployment
+
+        run_deployment(
+            name="active-learning-pipeline/active-learning-deployment",
+            parameters={"trigger_source": "g5_medium_drift"},
+            timeout=0,
+        )
+        logger.info("Triggered active learning pipeline due to medium drift.")
+    except Exception:
+        logger.warning("Failed to trigger active learning pipeline.", exc_info=True)

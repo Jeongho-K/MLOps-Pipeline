@@ -1,4 +1,4 @@
-.PHONY: up down down-v ps logs seed lint format test verify install train pipeline pipeline-serve drift-check
+.PHONY: up down down-v ps logs seed lint format test verify install train pipeline pipeline-serve drift-check canary-up canary-down canary-status
 
 # ---------------------------------------------------------------------------
 # Docker Compose
@@ -77,3 +77,15 @@ test-integration:
 
 test-e2e:
 	uv run pytest tests/e2e/ -v
+
+# ---------------------------------------------------------------------------
+# Canary Deployment (Phase C)
+# ---------------------------------------------------------------------------
+canary-up:
+	docker compose --profile canary up -d api-canary
+
+canary-down:
+	docker compose --profile canary stop api-canary
+
+canary-status:
+	@docker compose --profile canary ps api-canary 2>/dev/null || echo "Canary not running"
