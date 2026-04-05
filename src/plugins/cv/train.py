@@ -11,8 +11,8 @@ import argparse
 import logging
 import sys
 
-from src.training.configs.train_config import TrainConfig
-from src.training.trainers.classification_trainer import train
+from src.plugins.cv.configs.train_config import TrainConfig
+from src.plugins.cv.trainer import train
 
 logging.basicConfig(
     level=logging.INFO,
