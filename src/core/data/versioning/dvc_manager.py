@@ -14,8 +14,8 @@ from typing import Any
 
 import yaml
 
-from src.data.versioning.config import DVCConfig
-from src.data.versioning.models import VersioningResult
+from src.core.data.versioning.config import DVCConfig
+from src.core.data.versioning.models import VersioningResult
 
 logger = logging.getLogger(__name__)
 
