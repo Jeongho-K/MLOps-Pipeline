@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import httpx
 
-from src.monitoring.canary_metrics import (
+from src.core.monitoring.canary_metrics import (
     _query_prometheus,
     query_error_rate,
     query_p99_latency,
@@ -41,28 +41,28 @@ def _mock_response(status_code: int, json_data: dict) -> httpx.Response:
 class TestQueryPrometheus:
     """Tests for the internal _query_prometheus function."""
 
-    @patch("src.monitoring.canary_metrics.httpx.get")
+    @patch("src.core.monitoring.canary_metrics.httpx.get")
     def test_returns_value_on_success(self, mock_get: object) -> None:
         mock_get.return_value = _mock_response(200, _make_prom_response(0.02))  # type: ignore[attr-defined]
 
         result = _query_prometheus("http://prometheus:9090", "up")
         assert result == 0.02
 
-    @patch("src.monitoring.canary_metrics.httpx.get")
+    @patch("src.core.monitoring.canary_metrics.httpx.get")
     def test_returns_none_on_empty_result(self, mock_get: object) -> None:
         mock_get.return_value = _mock_response(200, _make_empty_response())  # type: ignore[attr-defined]
 
         result = _query_prometheus("http://prometheus:9090", "up")
         assert result is None
 
-    @patch("src.monitoring.canary_metrics.httpx.get")
+    @patch("src.core.monitoring.canary_metrics.httpx.get")
     def test_returns_none_on_http_error(self, mock_get: object) -> None:
         mock_get.side_effect = httpx.ConnectError("connection refused")  # type: ignore[attr-defined]
 
         result = _query_prometheus("http://prometheus:9090", "up")
         assert result is None
 
-    @patch("src.monitoring.canary_metrics.httpx.get")
+    @patch("src.core.monitoring.canary_metrics.httpx.get")
     def test_returns_none_on_error_status(self, mock_get: object) -> None:
         error_response = {"status": "error", "error": "bad query"}
         mock_get.return_value = _mock_response(200, error_response)  # type: ignore[attr-defined]
@@ -74,7 +74,7 @@ class TestQueryPrometheus:
 class TestQueryErrorRate:
     """Tests for query_error_rate."""
 
-    @patch("src.monitoring.canary_metrics._query_prometheus")
+    @patch("src.core.monitoring.canary_metrics._query_prometheus")
     def test_constructs_correct_query(self, mock_query: object) -> None:
         mock_query.return_value = 0.01  # type: ignore[attr-defined]
 
@@ -87,7 +87,7 @@ class TestQueryErrorRate:
         assert "5xx" not in query_str  # uses status=~"5.."
         assert '5.."' in query_str
 
-    @patch("src.monitoring.canary_metrics._query_prometheus")
+    @patch("src.core.monitoring.canary_metrics._query_prometheus")
     def test_returns_none_when_no_data(self, mock_query: object) -> None:
         mock_query.return_value = None  # type: ignore[attr-defined]
         result = query_error_rate("http://prom:9090", "api")
@@ -97,7 +97,7 @@ class TestQueryErrorRate:
 class TestQueryP99Latency:
     """Tests for query_p99_latency."""
 
-    @patch("src.monitoring.canary_metrics._query_prometheus")
+    @patch("src.core.monitoring.canary_metrics._query_prometheus")
     def test_constructs_histogram_quantile_query(self, mock_query: object) -> None:
         mock_query.return_value = 0.15  # type: ignore[attr-defined]
 

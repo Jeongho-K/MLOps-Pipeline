@@ -3,7 +3,7 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.monitoring.metrics import (
+from src.core.monitoring.metrics import (
     PREDICTION_CLASS_COUNTER,
     record_prediction,
     setup_metrics,

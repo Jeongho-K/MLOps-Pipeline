@@ -10,7 +10,7 @@ import pytest
 if TYPE_CHECKING:
     from pathlib import Path
 
-from src.orchestration.tasks.data_tasks import ensure_data_available
+from src.core.orchestration.tasks.data_tasks import ensure_data_available
 
 
 class TestEnsureDataAvailableWithDVC:
@@ -39,7 +39,7 @@ class TestEnsureDataAvailableWithDVC:
         mock_manager.pull.return_value = True
         mock_manager.verify_checksum.return_value = True
 
-        with patch("src.data.versioning.DVCManager", return_value=mock_manager):
+        with patch("src.core.data.versioning.DVCManager", return_value=mock_manager):
             result = ensure_data_available.fn(str(data_dir))
 
         mock_manager.pull.assert_called_once_with(str(dvc_file))
@@ -58,7 +58,7 @@ class TestEnsureDataAvailableWithDVC:
         mock_manager.verify_checksum.return_value = False
 
         with (
-            patch("src.data.versioning.DVCManager", return_value=mock_manager),
+            patch("src.core.data.versioning.DVCManager", return_value=mock_manager),
             pytest.raises(RuntimeError, match="Checksum verification failed"),
         ):
             ensure_data_available.fn(str(data_dir))
@@ -75,7 +75,7 @@ class TestEnsureDataAvailableWithDVC:
         mock_manager.pull.return_value = False
 
         with (
-            patch("src.data.versioning.DVCManager", return_value=mock_manager),
+            patch("src.core.data.versioning.DVCManager", return_value=mock_manager),
             pytest.raises(RuntimeError, match="DVC pull failed"),
         ):
             ensure_data_available.fn(str(data_dir))
@@ -91,7 +91,7 @@ class TestEnsureDataAvailableWithDVC:
         mock_manager = MagicMock()
         mock_manager.pull.return_value = True
 
-        with patch("src.data.versioning.DVCManager", return_value=mock_manager):
+        with patch("src.core.data.versioning.DVCManager", return_value=mock_manager):
             ensure_data_available.fn(str(data_dir), verify=False)
 
         mock_manager.verify_checksum.assert_not_called()
@@ -107,7 +107,7 @@ class TestEnsureDataAvailableWithDVC:
         mock_manager.pull.side_effect = Exception("Unexpected error")
 
         with (
-            patch("src.data.versioning.DVCManager", return_value=mock_manager),
+            patch("src.core.data.versioning.DVCManager", return_value=mock_manager),
             pytest.raises(Exception, match="Unexpected error"),
         ):
             ensure_data_available.fn(str(data_dir))

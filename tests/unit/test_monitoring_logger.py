@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock, patch
 
-from src.monitoring.prediction_logger import PredictionLog, PredictionLogger
+from src.core.monitoring.prediction_logger import PredictionLog, PredictionLogger
 
 
 class TestPredictionLog:
@@ -65,7 +65,7 @@ class TestPredictionLoggerBuffer:
     """Tests for PredictionLogger buffering behaviour (no real S3 calls)."""
 
     def _make_logger(self, flush_threshold: int = 50) -> PredictionLogger:
-        with patch("src.monitoring.prediction_logger.boto3.client"):
+        with patch("src.core.monitoring.prediction_logger.boto3.client"):
             pl = PredictionLogger(
                 s3_endpoint="http://localhost:9000",
                 bucket="prediction-logs",
@@ -132,7 +132,7 @@ class TestPredictionLoggerFlush:
     """Tests for explicit flush() behaviour."""
 
     def _make_logger_with_mock_s3(self, flush_threshold: int = 50) -> PredictionLogger:
-        with patch("src.monitoring.prediction_logger.boto3.client"):
+        with patch("src.core.monitoring.prediction_logger.boto3.client"):
             pl = PredictionLogger(
                 s3_endpoint="http://localhost:9000",
                 bucket="prediction-logs",

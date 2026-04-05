@@ -73,9 +73,7 @@ class TestMinioBuckets:
         """All buckets should have versioning enabled."""
         for bucket in self.EXPECTED_BUCKETS:
             response = minio_s3_client.get_bucket_versioning(Bucket=bucket)
-            assert response.get("Status") == "Enabled", (
-                f"Bucket '{bucket}' versioning is not enabled"
-            )
+            assert response.get("Status") == "Enabled", f"Bucket '{bucket}' versioning is not enabled"
 
 
 class TestPrometheusTargets:

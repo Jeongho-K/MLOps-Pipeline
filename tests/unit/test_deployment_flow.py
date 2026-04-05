@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from src.orchestration.flows.deployment_flow import (
+from src.core.orchestration.flows.deployment_flow import (
     _rollback,
     _run_canary_monitoring,
     deployment_flow,
@@ -14,14 +14,12 @@ from src.orchestration.flows.deployment_flow import (
 class TestRunCanaryMonitoring:
     """Tests for the G4 monitoring loop."""
 
-    @patch("src.orchestration.flows.deployment_flow.time.sleep")
-    @patch("src.orchestration.flows.deployment_flow.check_canary_gate")
-    def test_returns_true_when_all_checks_pass(
-        self, mock_gate: MagicMock, _mock_sleep: MagicMock
-    ) -> None:
+    @patch("src.core.orchestration.flows.deployment_flow.time.sleep")
+    @patch("src.core.orchestration.flows.deployment_flow.check_canary_gate")
+    def test_returns_true_when_all_checks_pass(self, mock_gate: MagicMock, _mock_sleep: MagicMock) -> None:
         mock_gate.return_value = {"passed": True, "reason": "ok", "metrics": {}}
 
-        from src.orchestration.config_deployment import DeploymentConfig
+        from src.core.orchestration.config_deployment import DeploymentConfig
 
         config = DeploymentConfig()
         result = _run_canary_monitoring(
@@ -36,14 +34,12 @@ class TestRunCanaryMonitoring:
         # 60s / 30s = 2 checks
         assert mock_gate.call_count == 2
 
-    @patch("src.orchestration.flows.deployment_flow.time.sleep")
-    @patch("src.orchestration.flows.deployment_flow.check_canary_gate")
-    def test_returns_false_on_first_failure(
-        self, mock_gate: MagicMock, _mock_sleep: MagicMock
-    ) -> None:
+    @patch("src.core.orchestration.flows.deployment_flow.time.sleep")
+    @patch("src.core.orchestration.flows.deployment_flow.check_canary_gate")
+    def test_returns_false_on_first_failure(self, mock_gate: MagicMock, _mock_sleep: MagicMock) -> None:
         mock_gate.return_value = {"passed": False, "reason": "error rate high", "metrics": {}}
 
-        from src.orchestration.config_deployment import DeploymentConfig
+        from src.core.orchestration.config_deployment import DeploymentConfig
 
         config = DeploymentConfig()
         result = _run_canary_monitoring(
@@ -62,12 +58,10 @@ class TestRunCanaryMonitoring:
 class TestRollback:
     """Tests for the rollback path."""
 
-    @patch("src.orchestration.flows.deployment_flow.stop_canary_container")
-    @patch("src.orchestration.flows.deployment_flow.update_nginx_weights")
-    def test_rollback_restores_champion_only(
-        self, mock_nginx: MagicMock, mock_stop: MagicMock
-    ) -> None:
-        from src.orchestration.config_deployment import DeploymentConfig
+    @patch("src.core.orchestration.flows.deployment_flow.stop_canary_container")
+    @patch("src.core.orchestration.flows.deployment_flow.update_nginx_weights")
+    def test_rollback_restores_champion_only(self, mock_nginx: MagicMock, mock_stop: MagicMock) -> None:
+        from src.core.orchestration.config_deployment import DeploymentConfig
 
         config = DeploymentConfig()
         result = _rollback(config)
@@ -85,13 +79,13 @@ class TestRollback:
 class TestDeploymentFlow:
     """Integration-level tests for the deployment flow."""
 
-    @patch("src.orchestration.flows.deployment_flow._create_deployment_artifact")
-    @patch("src.orchestration.flows.deployment_flow._run_canary_monitoring")
-    @patch("src.orchestration.flows.deployment_flow.update_nginx_weights")
-    @patch("src.orchestration.flows.deployment_flow.wait_for_canary_health")
-    @patch("src.orchestration.flows.deployment_flow.start_canary_container")
-    @patch("src.orchestration.flows.deployment_flow.reload_champion_model")
-    @patch("src.orchestration.flows.deployment_flow.stop_canary_container")
+    @patch("src.core.orchestration.flows.deployment_flow._create_deployment_artifact")
+    @patch("src.core.orchestration.flows.deployment_flow._run_canary_monitoring")
+    @patch("src.core.orchestration.flows.deployment_flow.update_nginx_weights")
+    @patch("src.core.orchestration.flows.deployment_flow.wait_for_canary_health")
+    @patch("src.core.orchestration.flows.deployment_flow.start_canary_container")
+    @patch("src.core.orchestration.flows.deployment_flow.reload_champion_model")
+    @patch("src.core.orchestration.flows.deployment_flow.stop_canary_container")
     def test_happy_path_rolls_out(
         self,
         mock_stop: MagicMock,
@@ -114,12 +108,12 @@ class TestDeploymentFlow:
         mock_reload.assert_called_once()
         mock_stop.assert_called_once()
 
-    @patch("src.orchestration.flows.deployment_flow._create_deployment_artifact")
-    @patch("src.orchestration.flows.deployment_flow._run_canary_monitoring")
-    @patch("src.orchestration.flows.deployment_flow.update_nginx_weights")
-    @patch("src.orchestration.flows.deployment_flow.wait_for_canary_health")
-    @patch("src.orchestration.flows.deployment_flow.start_canary_container")
-    @patch("src.orchestration.flows.deployment_flow.stop_canary_container")
+    @patch("src.core.orchestration.flows.deployment_flow._create_deployment_artifact")
+    @patch("src.core.orchestration.flows.deployment_flow._run_canary_monitoring")
+    @patch("src.core.orchestration.flows.deployment_flow.update_nginx_weights")
+    @patch("src.core.orchestration.flows.deployment_flow.wait_for_canary_health")
+    @patch("src.core.orchestration.flows.deployment_flow.start_canary_container")
+    @patch("src.core.orchestration.flows.deployment_flow.stop_canary_container")
     def test_failed_canary_rolls_back(
         self,
         mock_stop: MagicMock,

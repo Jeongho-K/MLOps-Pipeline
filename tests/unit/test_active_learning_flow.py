@@ -6,7 +6,7 @@ import json
 from io import BytesIO
 from unittest.mock import MagicMock, patch
 
-from src.orchestration.tasks.active_learning_tasks import (
+from src.core.orchestration.tasks.active_learning_tasks import (
     cleanup_accumulated,
     fetch_accumulated_samples,
     fetch_uncertain_predictions,
@@ -42,7 +42,7 @@ class TestFetchUncertainPredictions:
         mock_client.get_object.return_value = {"Body": BytesIO(_jsonl_bytes(*records))}
 
         with patch(
-            "src.orchestration.tasks.active_learning_tasks.boto3.client",
+            "src.core.orchestration.tasks.active_learning_tasks.boto3.client",
             return_value=mock_client,
         ):
             result = fetch_uncertain_predictions.fn(
@@ -63,7 +63,7 @@ class TestFetchUncertainPredictions:
         mock_client.get_paginator.return_value = mock_paginator
 
         with patch(
-            "src.orchestration.tasks.active_learning_tasks.boto3.client",
+            "src.core.orchestration.tasks.active_learning_tasks.boto3.client",
             return_value=mock_client,
         ):
             result = fetch_uncertain_predictions.fn(
@@ -87,7 +87,7 @@ class TestFetchUncertainPredictions:
         mock_client.get_object.return_value = {"Body": BytesIO(_jsonl_bytes(record))}
 
         with patch(
-            "src.orchestration.tasks.active_learning_tasks.boto3.client",
+            "src.core.orchestration.tasks.active_learning_tasks.boto3.client",
             return_value=mock_client,
         ):
             result = fetch_uncertain_predictions.fn(
@@ -133,14 +133,14 @@ class TestCreateLabelingTasks:
     """Tests for create_labeling_tasks task."""
 
     def test_creates_tasks_via_bridge(self):
-        from src.orchestration.tasks.active_learning_tasks import create_labeling_tasks
+        from src.core.orchestration.tasks.active_learning_tasks import create_labeling_tasks
 
         samples = [{"image": "http://minio/img1.jpg"}, {"image": "http://minio/img2.jpg"}]
         mock_bridge = MagicMock()
         mock_bridge.create_tasks.return_value = [{"id": 1}, {"id": 2}]
 
         with patch(
-            "src.active_learning.labeling.bridge.LabelStudioBridge",
+            "src.core.active_learning.labeling.bridge.LabelStudioBridge",
             return_value=mock_bridge,
         ):
             result = create_labeling_tasks.fn(
@@ -156,7 +156,7 @@ class TestCreateLabelingTasks:
         mock_bridge.close.assert_called_once()
 
     def test_returns_zero_for_empty_samples(self):
-        from src.orchestration.tasks.active_learning_tasks import create_labeling_tasks
+        from src.core.orchestration.tasks.active_learning_tasks import create_labeling_tasks
 
         result = create_labeling_tasks.fn(
             samples=[],
@@ -179,14 +179,12 @@ class TestFetchAccumulatedSamples:
 
         mock_client = MagicMock()
         mock_paginator = MagicMock()
-        mock_paginator.paginate.return_value = [
-            {"Contents": [{"Key": "accumulated/batch1.jsonl"}]}
-        ]
+        mock_paginator.paginate.return_value = [{"Contents": [{"Key": "accumulated/batch1.jsonl"}]}]
         mock_client.get_paginator.return_value = mock_paginator
         mock_client.get_object.return_value = {"Body": BytesIO(_jsonl_bytes(*records))}
 
         with patch(
-            "src.orchestration.tasks.active_learning_tasks.boto3.client",
+            "src.core.orchestration.tasks.active_learning_tasks.boto3.client",
             return_value=mock_client,
         ):
             result = fetch_accumulated_samples.fn(
@@ -206,7 +204,7 @@ class TestFetchAccumulatedSamples:
         mock_client.get_paginator.return_value = mock_paginator
 
         with patch(
-            "src.orchestration.tasks.active_learning_tasks.boto3.client",
+            "src.core.orchestration.tasks.active_learning_tasks.boto3.client",
             return_value=mock_client,
         ):
             result = fetch_accumulated_samples.fn(
@@ -290,7 +288,7 @@ class TestCleanupAccumulated:
         mock_client = MagicMock()
 
         with patch(
-            "src.orchestration.tasks.active_learning_tasks.boto3.client",
+            "src.core.orchestration.tasks.active_learning_tasks.boto3.client",
             return_value=mock_client,
         ):
             result = cleanup_accumulated.fn(
@@ -311,7 +309,7 @@ class TestCleanupAccumulated:
         mock_client.get_paginator.return_value = mock_paginator
 
         with patch(
-            "src.orchestration.tasks.active_learning_tasks.boto3.client",
+            "src.core.orchestration.tasks.active_learning_tasks.boto3.client",
             return_value=mock_client,
         ):
             result = cleanup_accumulated.fn(
@@ -333,7 +331,7 @@ class TestActiveLearningFlow:
     """Tests for active_learning_flow."""
 
     def test_flow_completes_with_uncertain_predictions(self):
-        from src.orchestration.flows.active_learning_flow import active_learning_flow
+        from src.core.orchestration.flows.active_learning_flow import active_learning_flow
 
         predictions = [
             {"uncertainty_score": 0.9, "routing_decision": "human_review"},
@@ -342,18 +340,18 @@ class TestActiveLearningFlow:
 
         with (
             patch(
-                "src.orchestration.flows.active_learning_flow.fetch_uncertain_predictions",
+                "src.core.orchestration.flows.active_learning_flow.fetch_uncertain_predictions",
                 return_value=predictions,
             ),
             patch(
-                "src.orchestration.flows.active_learning_flow.select_samples_for_labeling",
+                "src.core.orchestration.flows.active_learning_flow.select_samples_for_labeling",
                 return_value=predictions,
             ),
             patch(
-                "src.orchestration.flows.active_learning_flow.create_labeling_tasks",
+                "src.core.orchestration.flows.active_learning_flow.create_labeling_tasks",
                 return_value={"tasks_created": 2, "project_id": 1},
             ),
-            patch("src.orchestration.flows.active_learning_flow.create_markdown_artifact"),
+            patch("src.core.orchestration.flows.active_learning_flow.create_markdown_artifact"),
         ):
             result = active_learning_flow.fn()
 
@@ -363,14 +361,14 @@ class TestActiveLearningFlow:
         assert result["tasks_created"] == 2
 
     def test_flow_handles_no_uncertain_predictions(self):
-        from src.orchestration.flows.active_learning_flow import active_learning_flow
+        from src.core.orchestration.flows.active_learning_flow import active_learning_flow
 
         with (
             patch(
-                "src.orchestration.flows.active_learning_flow.fetch_uncertain_predictions",
+                "src.core.orchestration.flows.active_learning_flow.fetch_uncertain_predictions",
                 return_value=[],
             ),
-            patch("src.orchestration.flows.active_learning_flow.create_markdown_artifact"),
+            patch("src.core.orchestration.flows.active_learning_flow.create_markdown_artifact"),
         ):
             result = active_learning_flow.fn()
 
@@ -383,7 +381,6 @@ class TestActiveLearningFlow:
 # ---------------------------------------------------------------------------
 # Data Accumulation Flow tests
 # ---------------------------------------------------------------------------
-
 
 
 # Data accumulation flow tests live in tests/unit/test_data_accumulation_flow.py

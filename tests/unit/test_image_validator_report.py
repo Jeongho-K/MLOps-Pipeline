@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.data.validation.image_validator import ValidationReport
+from src.core.protocols import ValidationReport
 
 
 class TestValidationReport:
@@ -40,7 +40,7 @@ class TestValidationReport:
 
     def test_validate_nonexistent_path(self) -> None:
         """Non-existent path should raise FileNotFoundError."""
-        from src.data.validation.image_validator import validate_image_dataset
+        from src.plugins.cv.validator import validate_image_dataset
 
         with pytest.raises(FileNotFoundError, match="does not exist"):
             validate_image_dataset("/nonexistent/path")

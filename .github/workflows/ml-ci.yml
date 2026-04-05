@@ -4,9 +4,9 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - "src/training/**"
-      - "src/data/**"
-      - "src/orchestration/flows/training_pipeline.py"
+      - "src/plugins/cv/**"
+      - "src/core/data/**"
+      - "src/core/orchestration/flows/training_pipeline.py"
 
 permissions:
   contents: read
@@ -32,7 +32,7 @@ jobs:
           REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Train with reduced epochs for CI
-          uv run python -m src.training.train \
+          uv run python -m src.plugins.cv.train \
             --epochs 3 \
             --experiment-name ci-ml-comparison \
             2>&1 | tee training_output.log

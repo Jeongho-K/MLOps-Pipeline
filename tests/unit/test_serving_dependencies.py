@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import torch
 
 from src.common.device import resolve_device
-from src.serving.api.dependencies import ModelState, _detect_num_classes
+from src.core.serving.api.dependencies import ModelState, _detect_num_classes
 
 
 class TestModelState:
@@ -78,7 +78,7 @@ class TestLoadModelFromRegistry:
 
     def test_alias_uri_format(self) -> None:
         """Version starting with @ constructs models:/{name}@{alias} URI."""
-        from src.serving.api.dependencies import load_model_from_registry
+        from src.core.serving.api.dependencies import load_model_from_registry
 
         mock_model = MagicMock()
         mock_model.fc = torch.nn.Linear(512, 10)
@@ -88,12 +88,12 @@ class TestLoadModelFromRegistry:
         mock_mv.run_id = "run-123"
 
         with (
-            patch("src.serving.api.dependencies.mlflow.set_tracking_uri"),
+            patch("src.core.serving.api.dependencies.mlflow.set_tracking_uri"),
             patch(
-                "src.serving.api.dependencies.mlflow.pytorch.load_model",
+                "src.core.serving.api.dependencies.mlflow.pytorch.load_model",
                 return_value=mock_model,
             ) as mock_load,
-            patch("src.serving.api.dependencies.MlflowClient") as mock_client_cls,
+            patch("src.core.serving.api.dependencies.MlflowClient") as mock_client_cls,
         ):
             mock_client_cls.return_value.get_model_version_by_alias.return_value = mock_mv
 
@@ -110,7 +110,7 @@ class TestLoadModelFromRegistry:
 
     def test_numeric_version_uri_format(self) -> None:
         """Numeric version constructs models:/{name}/{version} URI."""
-        from src.serving.api.dependencies import load_model_from_registry
+        from src.core.serving.api.dependencies import load_model_from_registry
 
         mock_model = MagicMock()
         mock_model.fc = torch.nn.Linear(512, 5)
@@ -120,12 +120,12 @@ class TestLoadModelFromRegistry:
         mock_mv.run_id = "run-456"
 
         with (
-            patch("src.serving.api.dependencies.mlflow.set_tracking_uri"),
+            patch("src.core.serving.api.dependencies.mlflow.set_tracking_uri"),
             patch(
-                "src.serving.api.dependencies.mlflow.pytorch.load_model",
+                "src.core.serving.api.dependencies.mlflow.pytorch.load_model",
                 return_value=mock_model,
             ) as mock_load,
-            patch("src.serving.api.dependencies.MlflowClient") as mock_client_cls,
+            patch("src.core.serving.api.dependencies.MlflowClient") as mock_client_cls,
         ):
             mock_client_cls.return_value.get_model_version.return_value = mock_mv
 
@@ -142,19 +142,19 @@ class TestLoadModelFromRegistry:
 
     def test_source_run_id_graceful_degradation(self) -> None:
         """When MlflowClient raises, run_id defaults to empty string."""
-        from src.serving.api.dependencies import load_model_from_registry
+        from src.core.serving.api.dependencies import load_model_from_registry
 
         mock_model = MagicMock()
         mock_model.fc = torch.nn.Linear(512, 10)
         del mock_model.classifier
 
         with (
-            patch("src.serving.api.dependencies.mlflow.set_tracking_uri"),
+            patch("src.core.serving.api.dependencies.mlflow.set_tracking_uri"),
             patch(
-                "src.serving.api.dependencies.mlflow.pytorch.load_model",
+                "src.core.serving.api.dependencies.mlflow.pytorch.load_model",
                 return_value=mock_model,
             ),
-            patch("src.serving.api.dependencies.MlflowClient") as mock_client_cls,
+            patch("src.core.serving.api.dependencies.MlflowClient") as mock_client_cls,
         ):
             mock_client_cls.return_value.get_model_version_by_alias.side_effect = Exception("connection error")
 

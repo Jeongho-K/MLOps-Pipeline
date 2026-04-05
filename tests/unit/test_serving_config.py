@@ -1,6 +1,6 @@
 """Unit tests for serving configuration."""
 
-from src.serving.api.config import ServingConfig
+from src.core.serving.api.config import ServingConfig
 
 
 class TestServingConfig:

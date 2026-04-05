@@ -43,11 +43,11 @@ from prefect.transactions import Transaction, transaction
 from torch.utils.data import DataLoader
 from torchvision.datasets import ImageFolder
 
-from src.data.preprocessing.transforms import get_eval_transforms, get_train_transforms
-from src.data.validation.label_validator import validate_labels
-from src.monitoring.evidently.drift_detector import detect_drift, push_drift_metrics
-from src.training.models.classifier import create_classifier
-from src.training.trainers.classification_trainer import _run_epoch, resolve_device
+from src.plugins.cv.transforms import get_eval_transforms, get_train_transforms
+from src.plugins.cv.label_validator import validate_labels
+from src.core.monitoring.evidently.drift_detector import detect_drift, push_drift_metrics
+from src.plugins.cv.models.classifier import create_classifier
+from src.plugins.cv.trainer import _run_epoch, resolve_device
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -66,7 +66,7 @@ def clean_images_task(data_dir: str, round_num: int) -> dict[str, Any]:
     """
     from cleanvision import Imagelab
 
-    from src.data.validation.image_validator import validate_image_dataset
+    from src.plugins.cv.validator import validate_image_dataset
 
     train_dir = Path(data_dir) / "train"
     report = validate_image_dataset(train_dir)
@@ -507,7 +507,7 @@ def version_data_task(
     Returns:
         Dict with versioning results from VersioningResult.to_dict().
     """
-    from src.data.versioning import DVCManager
+    from src.core.data.versioning import DVCManager
 
     if not Path(".dvc").exists():
         logger.warning("DVC not initialized. Skipping data versioning.")
@@ -551,7 +551,7 @@ def version_data_task(
 @version_data_task.on_rollback
 def rollback_version_data(txn: Transaction) -> None:
     """Rollback data to the previous DVC state on transaction failure."""
-    from src.data.versioning import DVCManager
+    from src.core.data.versioning import DVCManager
 
     data_dir = txn.get("data_dir", "")
     round_num = txn.get("round_num", "?")
@@ -587,7 +587,7 @@ def snapshot_intermediate_data_task(
     Returns:
         Dict with snapshot metadata from RoundSnapshot.to_dict().
     """
-    from src.data.versioning import DVCConfig, DVCManager, RoundSnapshot
+    from src.core.data.versioning import DVCConfig, DVCManager, RoundSnapshot
 
     config = DVCConfig(push_to_remote=False, verify_checksum=False)
     manager = DVCManager(config=config)

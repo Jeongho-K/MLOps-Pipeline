@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
-from src.active_learning.labeling.bridge import LabelStudioBridge
+from src.core.active_learning.labeling.bridge import LabelStudioBridge
 
 
 @pytest.fixture

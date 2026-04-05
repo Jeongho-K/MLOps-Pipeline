@@ -41,8 +41,8 @@ class TestResolveDevice:
 
     def test_train_missing_data_dir(self) -> None:
         """Missing data directory should raise FileNotFoundError."""
-        from src.training.configs.train_config import TrainConfig
-        from src.training.trainers.classification_trainer import train
+        from src.plugins.cv.configs.train_config import TrainConfig
+        from src.plugins.cv.trainer import train
 
         config = TrainConfig(data_dir="/nonexistent/path", device="cpu")
         with pytest.raises(FileNotFoundError, match="Training data not found"):

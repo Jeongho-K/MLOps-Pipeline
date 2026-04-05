@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.active_learning.routing.confidence_router import ConfidenceRouter, RoutingDecision
+from src.core.active_learning.routing.confidence_router import ConfidenceRouter, RoutingDecision
 
 
 class TestRoutingDecision:

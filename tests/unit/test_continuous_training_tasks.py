@@ -6,7 +6,7 @@ import json
 from io import BytesIO
 from unittest.mock import MagicMock, patch
 
-from src.orchestration.tasks.continuous_training_tasks import (
+from src.core.orchestration.tasks.continuous_training_tasks import (
     check_champion_gate,
     check_training_quality,
     integrate_training_data,
@@ -119,9 +119,9 @@ class TestCheckChampionGate:
         mock_client.get_run.return_value = mock_run
 
         with (
-            patch("src.orchestration.tasks.continuous_training_tasks.mlflow"),
+            patch("src.core.orchestration.tasks.continuous_training_tasks.mlflow"),
             patch(
-                "src.orchestration.tasks.continuous_training_tasks.MlflowClient",
+                "src.core.orchestration.tasks.continuous_training_tasks.MlflowClient",
                 return_value=mock_client,
             ),
         ):
@@ -150,9 +150,9 @@ class TestCheckChampionGate:
         mock_client.get_run.return_value = mock_run
 
         with (
-            patch("src.orchestration.tasks.continuous_training_tasks.mlflow"),
+            patch("src.core.orchestration.tasks.continuous_training_tasks.mlflow"),
             patch(
-                "src.orchestration.tasks.continuous_training_tasks.MlflowClient",
+                "src.core.orchestration.tasks.continuous_training_tasks.MlflowClient",
                 return_value=mock_client,
             ),
         ):
@@ -172,9 +172,9 @@ class TestCheckChampionGate:
         mock_client.get_model_version_by_alias.side_effect = MlflowException("not found")
 
         with (
-            patch("src.orchestration.tasks.continuous_training_tasks.mlflow"),
+            patch("src.core.orchestration.tasks.continuous_training_tasks.mlflow"),
             patch(
-                "src.orchestration.tasks.continuous_training_tasks.MlflowClient",
+                "src.core.orchestration.tasks.continuous_training_tasks.MlflowClient",
                 return_value=mock_client,
             ),
         ):
@@ -200,9 +200,9 @@ class TestCheckChampionGate:
         mock_client.get_run.return_value = mock_run
 
         with (
-            patch("src.orchestration.tasks.continuous_training_tasks.mlflow"),
+            patch("src.core.orchestration.tasks.continuous_training_tasks.mlflow"),
             patch(
-                "src.orchestration.tasks.continuous_training_tasks.MlflowClient",
+                "src.core.orchestration.tasks.continuous_training_tasks.MlflowClient",
                 return_value=mock_client,
             ),
         ):
@@ -217,8 +217,8 @@ class TestCheckChampionGate:
 
     def test_fails_when_challenger_metric_missing(self) -> None:
         with (
-            patch("src.orchestration.tasks.continuous_training_tasks.mlflow"),
-            patch("src.orchestration.tasks.continuous_training_tasks.MlflowClient"),
+            patch("src.core.orchestration.tasks.continuous_training_tasks.mlflow"),
+            patch("src.core.orchestration.tasks.continuous_training_tasks.MlflowClient"),
         ):
             result = check_champion_gate.fn(
                 challenger_metrics={},
@@ -246,9 +246,9 @@ class TestPromoteToChampion:
         mock_client.get_model_version_by_alias.return_value = mock_version
 
         with (
-            patch("src.orchestration.tasks.continuous_training_tasks.mlflow"),
+            patch("src.core.orchestration.tasks.continuous_training_tasks.mlflow"),
             patch(
-                "src.orchestration.tasks.continuous_training_tasks.MlflowClient",
+                "src.core.orchestration.tasks.continuous_training_tasks.MlflowClient",
                 return_value=mock_client,
             ),
         ):
@@ -274,12 +274,10 @@ class TestResolveRoundNumber:
 
     def test_increments_from_existing_state(self) -> None:
         mock_client = MagicMock()
-        mock_client.get_object.return_value = {
-            "Body": BytesIO(json.dumps({"round": 3}).encode())
-        }
+        mock_client.get_object.return_value = {"Body": BytesIO(json.dumps({"round": 3}).encode())}
 
         with patch(
-            "src.orchestration.tasks.continuous_training_tasks.boto3.client",
+            "src.core.orchestration.tasks.continuous_training_tasks.boto3.client",
             return_value=mock_client,
         ):
             result = resolve_round_number.fn(
@@ -299,7 +297,7 @@ class TestResolveRoundNumber:
         mock_client.get_object.side_effect = mock_client.exceptions.NoSuchKey("not found")
 
         with patch(
-            "src.orchestration.tasks.continuous_training_tasks.boto3.client",
+            "src.core.orchestration.tasks.continuous_training_tasks.boto3.client",
             return_value=mock_client,
         ):
             result = resolve_round_number.fn(
@@ -355,9 +353,7 @@ class TestIntegrateTrainingData:
 
         mock_s3 = MagicMock()
         mock_paginator = MagicMock()
-        mock_paginator.paginate.return_value = [
-            {"Contents": [{"Key": "accumulated/batch.jsonl"}]}
-        ]
+        mock_paginator.paginate.return_value = [{"Contents": [{"Key": "accumulated/batch.jsonl"}]}]
         mock_s3.get_paginator.return_value = mock_paginator
 
         # Return different content based on key
@@ -373,11 +369,11 @@ class TestIntegrateTrainingData:
 
         with (
             patch(
-                "src.active_learning.labeling.bridge.LabelStudioBridge",
+                "src.core.active_learning.labeling.bridge.LabelStudioBridge",
                 return_value=mock_bridge,
             ),
             patch(
-                "src.orchestration.tasks.continuous_training_tasks.boto3.client",
+                "src.core.orchestration.tasks.continuous_training_tasks.boto3.client",
                 return_value=mock_s3,
             ),
         ):
@@ -417,11 +413,11 @@ class TestIntegrateTrainingData:
 
         with (
             patch(
-                "src.active_learning.labeling.bridge.LabelStudioBridge",
+                "src.core.active_learning.labeling.bridge.LabelStudioBridge",
                 return_value=mock_bridge,
             ),
             patch(
-                "src.orchestration.tasks.continuous_training_tasks.boto3.client",
+                "src.core.orchestration.tasks.continuous_training_tasks.boto3.client",
                 return_value=mock_s3,
             ),
         ):

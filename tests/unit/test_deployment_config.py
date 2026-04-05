@@ -1,6 +1,6 @@
 """Unit tests for deployment configuration."""
 
-from src.orchestration.config_deployment import DeploymentConfig
+from src.core.orchestration.config_deployment import DeploymentConfig
 
 
 class TestDeploymentConfig:

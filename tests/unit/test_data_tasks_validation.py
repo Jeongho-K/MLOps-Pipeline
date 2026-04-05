@@ -10,7 +10,7 @@ import pytest
 if TYPE_CHECKING:
     from pathlib import Path
 
-from src.orchestration.tasks.data_tasks import prepare_dataset
+from src.core.orchestration.tasks.data_tasks import prepare_dataset
 
 
 class TestPrepareDataset:
@@ -77,16 +77,16 @@ class TestValidateLabelsTask:
         return {
             "load_model": patch("mlflow.pytorch.load_model", return_value=mock_model),
             "set_tracking_uri": patch("mlflow.set_tracking_uri"),
-            "image_folder": patch("src.orchestration.tasks.data_tasks.ImageFolder"),
-            "data_loader": patch("src.orchestration.tasks.data_tasks.DataLoader", return_value=[batch]),
-            "get_transforms": patch("src.data.preprocessing.transforms.get_eval_transforms", return_value=MagicMock()),
-            "validate_labels": patch("src.data.validation.validate_labels", return_value=mock_report),
-            "create_artifact": patch("src.orchestration.tasks.data_tasks.create_markdown_artifact"),
+            "image_folder": patch("src.core.orchestration.tasks.data_tasks.ImageFolder"),
+            "data_loader": patch("src.core.orchestration.tasks.data_tasks.DataLoader", return_value=[batch]),
+            "get_transforms": patch("src.plugins.cv.transforms.get_eval_transforms", return_value=MagicMock()),
+            "validate_labels": patch("src.plugins.cv.label_validator.validate_labels", return_value=mock_report),
+            "create_artifact": patch("src.core.orchestration.tasks.data_tasks.create_markdown_artifact"),
         }
 
     def test_returns_label_quality_dict(self, tmp_path: Path) -> None:
         """Returns dict with expected label quality metric keys."""
-        from src.orchestration.tasks.data_tasks import validate_labels_task
+        from src.core.orchestration.tasks.data_tasks import validate_labels_task
 
         mock_report = MagicMock()
         mock_report.to_dict.return_value = self._mock_label_report()
@@ -118,7 +118,7 @@ class TestValidateLabelsTask:
 
     def test_model_loaded_and_set_to_eval_mode(self, tmp_path: Path) -> None:
         """Model is loaded from MLflow URI and set to eval mode."""
-        from src.orchestration.tasks.data_tasks import validate_labels_task
+        from src.core.orchestration.tasks.data_tasks import validate_labels_task
 
         mock_report = MagicMock()
         mock_report.to_dict.return_value = self._mock_label_report()
@@ -149,7 +149,7 @@ class TestValidateLabelsTask:
 
     def test_mlflow_logging_with_run_id(self, tmp_path: Path) -> None:
         """When mlflow_run_id is provided, metrics are logged to MLflow."""
-        from src.orchestration.tasks.data_tasks import validate_labels_task
+        from src.core.orchestration.tasks.data_tasks import validate_labels_task
 
         mock_report = MagicMock()
         mock_report.to_dict.return_value = self._mock_label_report()
@@ -182,7 +182,7 @@ class TestValidateLabelsTask:
 
     def test_skips_mlflow_when_no_run_id(self, tmp_path: Path) -> None:
         """When mlflow_run_id is None, MlflowClient is not called."""
-        from src.orchestration.tasks.data_tasks import validate_labels_task
+        from src.core.orchestration.tasks.data_tasks import validate_labels_task
 
         mock_report = MagicMock()
         mock_report.to_dict.return_value = self._mock_label_report()

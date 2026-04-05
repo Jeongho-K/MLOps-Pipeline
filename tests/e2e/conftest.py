@@ -37,9 +37,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         if "e2e" in str(item.fspath):
             item.add_marker(pytest.mark.e2e)
             if not services_up:
-                item.add_marker(
-                    pytest.mark.skip(reason="Docker services not running (make up)")
-                )
+                item.add_marker(pytest.mark.skip(reason="Docker services not running (make up)"))
 
 
 # ---------------------------------------------------------------------------

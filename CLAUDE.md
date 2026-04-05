@@ -56,7 +56,7 @@ Serve → Monitor → Confidence Split
 | A: Active Learning Core | Uncertainty, routing, Label Studio, pseudo-labels | **Implemented** |
 | B: Continuous Training Loop | Event-driven retrain, champion gate, data integration | **Implemented** |
 | C: CI/CD & Deployment | GitHub Actions, CML, canary deploy, rollback | **Implemented** |
-| D: Architecture Refactoring | core/ + plugins/ restructure, Protocol interfaces | Planned |
+| D: Architecture Refactoring | core/ + plugins/ restructure, Protocol interfaces | **Implemented** |
 
 Design spec: `docs/specs/2026-03-29-active-learning-first-mlops-design.md`
 
@@ -138,8 +138,6 @@ Versions are pinned in `docker-compose.yml` (infra) and `pyproject.toml` (Python
 
 ## Directory Structure
 
-### Current (pre-Phase D refactoring)
-
 ```
 data-flywheel/
 ├── CLAUDE.md                 # This file — project philosophy + rules
@@ -150,13 +148,20 @@ data-flywheel/
 ├── Makefile                  # Common commands
 ├── pyproject.toml            # Python tooling config
 ├── docker/                   # Dockerfiles per service
-├── src/                      # Source code (by layer)
-│   ├── data/                 # Layer 2: validation, preprocessing
-│   ├── training/             # Layer 3: models, trainers, configs
-│   ├── serving/              # Layer 5: FastAPI, nginx, gunicorn
-│   ├── orchestration/        # Layer 4: Prefect flows, tasks
-│   ├── monitoring/           # Layer 6: Evidently, Prometheus, Grafana
-│   ├── active_learning/      # Pillar 1: AL Engine (uncertainty, routing, accumulation, labeling)
+├── src/                      # Source code
+│   ├── core/                 # Framework (domain-agnostic)
+│   │   ├── protocols.py      # 4 Protocol interfaces + ValidationReport
+│   │   ├── active_learning/  # Pillar 1: routing, accumulation, labeling
+│   │   ├── data/             # Layer 2: versioning (DVC)
+│   │   ├── orchestration/    # Layer 4: Prefect flows & tasks
+│   │   ├── serving/          # Layer 5: FastAPI, gunicorn
+│   │   └── monitoring/       # Layer 6: Prometheus, Evidently
+│   ├── plugins/              # Domain-specific implementations
+│   │   ├── loader.py         # Environment-variable-based plugin loading
+│   │   └── cv/               # CV Plugin (first implementation)
+│   │       ├── uncertainty.py, validator.py, trainer.py, transforms.py
+│   │       ├── models/       # CNN architectures
+│   │       └── configs/      # TrainConfig, ValidationConfig
 │   └── common/               # Shared utilities
 ├── configs/                  # Service configuration files
 ├── tests/                    # unit, integration, e2e
@@ -164,5 +169,3 @@ data-flywheel/
 ├── examples/                 # Example templates
 └── docs/                     # Documentation (Korean)
 ```
-
-Phase D target structure is documented in `docs/specs/2026-03-29-active-learning-first-mlops-design.md`.

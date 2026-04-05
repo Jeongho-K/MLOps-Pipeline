@@ -9,8 +9,8 @@ from unittest.mock import MagicMock, patch
 
 from botocore.exceptions import ClientError
 
-from src.active_learning.accumulator.auto_accumulator import AutoAccumulator
-from src.active_learning.accumulator.models import AccumulatedSample
+from src.core.active_learning.accumulator.auto_accumulator import AutoAccumulator
+from src.core.active_learning.accumulator.models import AccumulatedSample
 
 
 def _make_sample(
@@ -53,7 +53,7 @@ class TestAccumulatedSample:
 
 
 class TestAutoAccumulator:
-    @patch("src.active_learning.accumulator.auto_accumulator.boto3.client")
+    @patch("src.core.active_learning.accumulator.auto_accumulator.boto3.client")
     def test_add_increases_buffer(self, mock_boto_client):
         acc = AutoAccumulator("http://minio:9000", "bucket", "accumulated/", "key", "secret", flush_threshold=100)
         assert acc.buffer_size == 0
@@ -62,7 +62,7 @@ class TestAutoAccumulator:
         acc.add(_make_sample())
         assert acc.buffer_size == 2
 
-    @patch("src.active_learning.accumulator.auto_accumulator.boto3.client")
+    @patch("src.core.active_learning.accumulator.auto_accumulator.boto3.client")
     def test_auto_flush_at_threshold(self, mock_boto_client):
         mock_s3 = MagicMock()
         mock_boto_client.return_value = mock_s3
@@ -77,7 +77,7 @@ class TestAutoAccumulator:
         mock_s3.put_object.assert_called_once()
         assert acc.buffer_size == 0
 
-    @patch("src.active_learning.accumulator.auto_accumulator.boto3.client")
+    @patch("src.core.active_learning.accumulator.auto_accumulator.boto3.client")
     def test_flush_uploads_to_s3(self, mock_boto_client):
         mock_s3 = MagicMock()
         mock_boto_client.return_value = mock_s3
@@ -97,12 +97,12 @@ class TestAutoAccumulator:
         assert call_kwargs["Key"].endswith(".jsonl")
         assert call_kwargs["ContentType"] == "application/x-ndjson"
 
-    @patch("src.active_learning.accumulator.auto_accumulator.boto3.client")
+    @patch("src.core.active_learning.accumulator.auto_accumulator.boto3.client")
     def test_flush_empty_buffer_returns_zero(self, mock_boto_client):
         acc = AutoAccumulator("http://minio:9000", "bucket", "accumulated/", "key", "secret")
         assert acc.flush() == 0
 
-    @patch("src.active_learning.accumulator.auto_accumulator.boto3.client")
+    @patch("src.core.active_learning.accumulator.auto_accumulator.boto3.client")
     def test_flush_requeues_on_s3_error(self, mock_boto_client):
         mock_s3 = MagicMock()
         mock_s3.put_object.side_effect = ClientError(
@@ -119,7 +119,7 @@ class TestAutoAccumulator:
         assert count == 0
         assert acc.buffer_size == 2
 
-    @patch("src.active_learning.accumulator.auto_accumulator.boto3.client")
+    @patch("src.core.active_learning.accumulator.auto_accumulator.boto3.client")
     def test_class_distribution_warning(self, mock_boto_client, caplog):
         mock_s3 = MagicMock()
         mock_boto_client.return_value = mock_s3
@@ -129,12 +129,12 @@ class TestAutoAccumulator:
         for _ in range(5):
             acc.add(_make_sample(predicted_class=0))
 
-        with caplog.at_level(logging.WARNING, logger="src.active_learning.accumulator.auto_accumulator"):
+        with caplog.at_level(logging.WARNING, logger="src.core.active_learning.accumulator.auto_accumulator"):
             acc.flush()
 
         assert any("Class imbalance" in msg for msg in caplog.messages)
 
-    @patch("src.active_learning.accumulator.auto_accumulator.boto3.client")
+    @patch("src.core.active_learning.accumulator.auto_accumulator.boto3.client")
     def test_no_class_distribution_warning_when_balanced(self, mock_boto_client, caplog):
         mock_s3 = MagicMock()
         mock_boto_client.return_value = mock_s3
@@ -144,12 +144,12 @@ class TestAutoAccumulator:
         for i in range(5):
             acc.add(_make_sample(predicted_class=i))
 
-        with caplog.at_level(logging.WARNING, logger="src.active_learning.accumulator.auto_accumulator"):
+        with caplog.at_level(logging.WARNING, logger="src.core.active_learning.accumulator.auto_accumulator"):
             acc.flush()
 
         assert not any("Class imbalance" in msg for msg in caplog.messages)
 
-    @patch("src.active_learning.accumulator.auto_accumulator.boto3.client")
+    @patch("src.core.active_learning.accumulator.auto_accumulator.boto3.client")
     def test_thread_safety(self, mock_boto_client):
         mock_s3 = MagicMock()
         mock_boto_client.return_value = mock_s3

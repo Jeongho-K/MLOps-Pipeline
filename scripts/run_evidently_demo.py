@@ -18,7 +18,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.monitoring.evidently.drift_detector import (
+from src.core.monitoring.evidently.drift_detector import (
     detect_drift,
     push_drift_metrics,
     check_drift_threshold,

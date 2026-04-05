@@ -4,7 +4,7 @@ import pytest
 import torch
 import torch.nn as nn
 
-from src.training.models.classifier import SUPPORTED_MODELS, create_classifier
+from src.plugins.cv.models.classifier import SUPPORTED_MODELS, create_classifier
 
 
 class TestCreateClassifier:

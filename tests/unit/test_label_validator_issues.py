@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from src.data.validation.label_validator import LabelReport, validate_labels
+from src.plugins.cv.label_validator import LabelReport, validate_labels
 
 
 class TestLabelValidator:

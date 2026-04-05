@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
-from src.orchestration.flows.monitoring_flow import (
+from src.core.orchestration.flows.monitoring_flow import (
     fetch_prediction_logs,
     fetch_reference_data,
     run_drift_detection,
@@ -37,7 +37,7 @@ class TestFetchPredictionLogs:
         mock_client.get_object.return_value = {"Body": BytesIO(_jsonl(*records))}
 
         with patch(
-            "src.orchestration.flows.monitoring_flow.boto3.client",
+            "src.core.orchestration.flows.monitoring_flow.boto3.client",
             return_value=mock_client,
         ):
             df = fetch_prediction_logs.fn(
@@ -59,7 +59,7 @@ class TestFetchPredictionLogs:
         mock_client.list_objects_v2.return_value = {"Contents": []}
 
         with patch(
-            "src.orchestration.flows.monitoring_flow.boto3.client",
+            "src.core.orchestration.flows.monitoring_flow.boto3.client",
             return_value=mock_client,
         ):
             df = fetch_prediction_logs.fn(
@@ -89,7 +89,7 @@ class TestFetchPredictionLogs:
         ]
 
         with patch(
-            "src.orchestration.flows.monitoring_flow.boto3.client",
+            "src.core.orchestration.flows.monitoring_flow.boto3.client",
             return_value=mock_client,
         ):
             df = fetch_prediction_logs.fn(
@@ -115,7 +115,7 @@ class TestFetchPredictionLogs:
         mock_client.get_object.return_value = {"Body": BytesIO(_jsonl(record))}
 
         with patch(
-            "src.orchestration.flows.monitoring_flow.boto3.client",
+            "src.core.orchestration.flows.monitoring_flow.boto3.client",
             return_value=mock_client,
         ):
             df = fetch_prediction_logs.fn(
@@ -146,7 +146,7 @@ class TestFetchReferenceData:
         mock_client.get_object.return_value = {"Body": BytesIO(_jsonl(*records))}
 
         with patch(
-            "src.orchestration.flows.monitoring_flow.boto3.client",
+            "src.core.orchestration.flows.monitoring_flow.boto3.client",
             return_value=mock_client,
         ):
             df = fetch_reference_data.fn(
@@ -168,7 +168,7 @@ class TestFetchReferenceData:
         mock_client.get_object.return_value = {"Body": BytesIO(b"")}
 
         with patch(
-            "src.orchestration.flows.monitoring_flow.boto3.client",
+            "src.core.orchestration.flows.monitoring_flow.boto3.client",
             return_value=mock_client,
         ):
             df = fetch_reference_data.fn(
@@ -205,11 +205,11 @@ class TestRunDriftDetection:
 
         with (
             patch(
-                "src.orchestration.flows.monitoring_flow.detect_drift",
+                "src.core.orchestration.flows.monitoring_flow.detect_drift",
                 return_value=mock_result,
             ) as mock_detect,
-            patch("src.orchestration.flows.monitoring_flow.push_drift_metrics") as mock_push,
-            patch("src.orchestration.flows.monitoring_flow.create_markdown_artifact"),
+            patch("src.core.orchestration.flows.monitoring_flow.push_drift_metrics") as mock_push,
+            patch("src.core.orchestration.flows.monitoring_flow.create_markdown_artifact"),
         ):
             result = run_drift_detection.fn(
                 reference=self._make_df(),
@@ -236,11 +236,11 @@ class TestRunDriftDetection:
 
         with (
             patch(
-                "src.orchestration.flows.monitoring_flow.detect_drift",
+                "src.core.orchestration.flows.monitoring_flow.detect_drift",
                 return_value=mock_result,
             ),
-            patch("src.orchestration.flows.monitoring_flow.push_drift_metrics"),
-            patch("src.orchestration.flows.monitoring_flow.create_markdown_artifact"),
+            patch("src.core.orchestration.flows.monitoring_flow.push_drift_metrics"),
+            patch("src.core.orchestration.flows.monitoring_flow.create_markdown_artifact"),
         ):
             result = run_drift_detection.fn(
                 reference=self._make_df(),
@@ -271,10 +271,10 @@ class TestUploadDriftReport:
 
         with (
             patch(
-                "src.orchestration.flows.monitoring_flow.boto3.client",
+                "src.core.orchestration.flows.monitoring_flow.boto3.client",
                 return_value=mock_client,
             ),
-            patch("src.orchestration.flows.monitoring_flow.save_drift_report_html") as mock_save,
+            patch("src.core.orchestration.flows.monitoring_flow.save_drift_report_html") as mock_save,
         ):
             upload_drift_report.fn(
                 reference=self._make_df(),
@@ -298,10 +298,10 @@ class TestUploadDriftReport:
 
         with (
             patch(
-                "src.orchestration.flows.monitoring_flow.boto3.client",
+                "src.core.orchestration.flows.monitoring_flow.boto3.client",
                 return_value=mock_client,
             ),
-            patch("src.orchestration.flows.monitoring_flow.save_drift_report_html"),
+            patch("src.core.orchestration.flows.monitoring_flow.save_drift_report_html"),
         ):
             s3_key = upload_drift_report.fn(
                 reference=self._make_df(),
@@ -332,14 +332,14 @@ class TestRunDriftQualityGate:
 
     def test_returns_result_when_passed(self) -> None:
         """Returns result dict when drift is below threshold."""
-        from src.orchestration.flows.monitoring_flow import run_drift_quality_gate
+        from src.core.orchestration.flows.monitoring_flow import run_drift_quality_gate
 
         with (
             patch(
-                "src.orchestration.flows.monitoring_flow.check_drift_threshold",
+                "src.core.orchestration.flows.monitoring_flow.check_drift_threshold",
                 return_value=self._gate_result(passed=True),
             ),
-            patch("src.orchestration.flows.monitoring_flow.create_markdown_artifact"),
+            patch("src.core.orchestration.flows.monitoring_flow.create_markdown_artifact"),
         ):
             result = run_drift_quality_gate.fn(
                 reference=pd.DataFrame({"a": [1]}),
@@ -353,14 +353,14 @@ class TestRunDriftQualityGate:
         """Raises RuntimeError when drift exceeds threshold."""
         import pytest
 
-        from src.orchestration.flows.monitoring_flow import run_drift_quality_gate
+        from src.core.orchestration.flows.monitoring_flow import run_drift_quality_gate
 
         with (
             patch(
-                "src.orchestration.flows.monitoring_flow.check_drift_threshold",
+                "src.core.orchestration.flows.monitoring_flow.check_drift_threshold",
                 return_value=self._gate_result(passed=False),
             ),
-            patch("src.orchestration.flows.monitoring_flow.create_markdown_artifact"),
+            patch("src.core.orchestration.flows.monitoring_flow.create_markdown_artifact"),
             pytest.raises(RuntimeError, match="Drift quality gate failed"),
         ):
             run_drift_quality_gate.fn(
@@ -370,14 +370,14 @@ class TestRunDriftQualityGate:
 
     def test_creates_markdown_artifact(self) -> None:
         """Creates a Prefect markdown artifact with drift quality gate results."""
-        from src.orchestration.flows.monitoring_flow import run_drift_quality_gate
+        from src.core.orchestration.flows.monitoring_flow import run_drift_quality_gate
 
         with (
             patch(
-                "src.orchestration.flows.monitoring_flow.check_drift_threshold",
+                "src.core.orchestration.flows.monitoring_flow.check_drift_threshold",
                 return_value=self._gate_result(passed=True),
             ),
-            patch("src.orchestration.flows.monitoring_flow.create_markdown_artifact") as mock_artifact,
+            patch("src.core.orchestration.flows.monitoring_flow.create_markdown_artifact") as mock_artifact,
         ):
             run_drift_quality_gate.fn(
                 reference=pd.DataFrame({"a": [1]}),
@@ -421,21 +421,21 @@ class TestMonitoringPipelineFailOnDrift:
         mock_cfg.lookback_days = 1
         mock_cfg.pushgateway_url = "http://pushgateway:9091"
         return {
-            "config": patch("src.orchestration.flows.monitoring_flow.DriftConfig", return_value=mock_cfg),
+            "config": patch("src.core.orchestration.flows.monitoring_flow.DriftConfig", return_value=mock_cfg),
             "fetch_logs": patch(
-                "src.orchestration.flows.monitoring_flow.fetch_prediction_logs",
+                "src.core.orchestration.flows.monitoring_flow.fetch_prediction_logs",
                 return_value=mocks["current_df"],
             ),
             "fetch_ref": patch(
-                "src.orchestration.flows.monitoring_flow.fetch_reference_data",
+                "src.core.orchestration.flows.monitoring_flow.fetch_reference_data",
                 return_value=mocks["reference_df"],
             ),
             "drift_detect": patch(
-                "src.orchestration.flows.monitoring_flow.run_drift_detection",
+                "src.core.orchestration.flows.monitoring_flow.run_drift_detection",
                 return_value=mocks["drift_result"],
             ),
             "quality_gate": patch(
-                "src.orchestration.flows.monitoring_flow.run_drift_quality_gate",
+                "src.core.orchestration.flows.monitoring_flow.run_drift_quality_gate",
                 side_effect=RuntimeError("Drift quality gate failed"),
             ),
         }
@@ -444,7 +444,7 @@ class TestMonitoringPipelineFailOnDrift:
         """Pipeline raises RuntimeError when fail_on_drift=True and drift exceeds threshold."""
         import pytest
 
-        from src.orchestration.flows.monitoring_flow import monitoring_pipeline
+        from src.core.orchestration.flows.monitoring_flow import monitoring_pipeline
 
         mocks = self._setup_pipeline_mocks()
         patches = self._pipeline_patches(mocks)
@@ -455,14 +455,14 @@ class TestMonitoringPipelineFailOnDrift:
             patches["fetch_ref"],
             patches["drift_detect"],
             patches["quality_gate"],
-            patch("src.orchestration.flows.monitoring_flow.upload_drift_report"),
+            patch("src.core.orchestration.flows.monitoring_flow.upload_drift_report"),
             pytest.raises(RuntimeError, match="Drift quality gate failed"),
         ):
             monitoring_pipeline.fn(fail_on_drift=True)
 
     def test_fail_on_drift_false_continues(self) -> None:
         """Pipeline continues to report upload when fail_on_drift=False (default)."""
-        from src.orchestration.flows.monitoring_flow import monitoring_pipeline
+        from src.core.orchestration.flows.monitoring_flow import monitoring_pipeline
 
         mocks = self._setup_pipeline_mocks()
         patches = self._pipeline_patches(mocks)
@@ -474,7 +474,7 @@ class TestMonitoringPipelineFailOnDrift:
             patches["drift_detect"],
             patches["quality_gate"],
             patch(
-                "src.orchestration.flows.monitoring_flow.upload_drift_report",
+                "src.core.orchestration.flows.monitoring_flow.upload_drift_report",
                 return_value="2026-03-29/drift-report.html",
             ) as mock_upload,
         ):

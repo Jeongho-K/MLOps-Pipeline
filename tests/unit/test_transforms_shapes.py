@@ -3,7 +3,7 @@
 import torch
 from PIL import Image
 
-from src.data.preprocessing.transforms import get_eval_transforms, get_train_transforms
+from src.plugins.cv.transforms import get_eval_transforms, get_train_transforms
 
 
 class TestTransforms:

@@ -12,7 +12,7 @@ class TestContinuousTrainingFlow:
 
     def _run_flow(self, **overrides):
         """Run the flow with all tasks mocked, applying overrides."""
-        from src.orchestration.flows.continuous_training_flow import continuous_training_flow
+        from src.core.orchestration.flows.continuous_training_flow import continuous_training_flow
 
         defaults = {
             "resolve_round_number": 1,
@@ -46,7 +46,7 @@ class TestContinuousTrainingFlow:
         }
         defaults.update(overrides)
 
-        module = "src.orchestration.flows.continuous_training_flow"
+        module = "src.core.orchestration.flows.continuous_training_flow"
         with (
             patch(f"{module}.resolve_round_number", return_value=defaults["resolve_round_number"]),
             patch(f"{module}.integrate_training_data", return_value=defaults["integrate_training_data"]),
@@ -57,7 +57,7 @@ class TestContinuousTrainingFlow:
             patch(f"{module}.create_markdown_artifact"),
             patch(f"{module}._version_data"),
             patch(
-                "src.orchestration.flows.training_pipeline.training_pipeline",
+                "src.core.orchestration.flows.training_pipeline.training_pipeline",
                 return_value=defaults["training_pipeline"],
             ),
         ):
@@ -89,9 +89,9 @@ class TestContinuousTrainingFlow:
         assert "No training data" in result["reason"]
 
     def test_g1_failure_raises(self) -> None:
-        from src.orchestration.flows.continuous_training_flow import continuous_training_flow
+        from src.core.orchestration.flows.continuous_training_flow import continuous_training_flow
 
-        module = "src.orchestration.flows.continuous_training_flow"
+        module = "src.core.orchestration.flows.continuous_training_flow"
         with (
             patch(f"{module}.resolve_round_number", return_value=1),
             patch(

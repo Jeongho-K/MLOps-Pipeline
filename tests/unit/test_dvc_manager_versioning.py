@@ -8,9 +8,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
-from src.data.versioning.config import DVCConfig
-from src.data.versioning.dvc_manager import DVCManager
-from src.data.versioning.models import RoundSnapshot, VersioningResult
+from src.core.data.versioning.config import DVCConfig
+from src.core.data.versioning.dvc_manager import DVCManager
+from src.core.data.versioning.models import RoundSnapshot, VersioningResult
 
 if TYPE_CHECKING:
     from pathlib import Path

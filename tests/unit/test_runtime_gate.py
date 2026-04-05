@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.orchestration.tasks.runtime_gate import DriftSeverity, evaluate_runtime_gate
+from src.core.orchestration.tasks.runtime_gate import DriftSeverity, evaluate_runtime_gate
 
 
 class TestEvaluateRuntimeGate:

@@ -42,20 +42,20 @@ install:
 # Training
 # ---------------------------------------------------------------------------
 train:
-	uv run python -m src.training.train
+	uv run python -m src.plugins.cv.train
 
 pipeline:
-	uv run python -m src.orchestration.serve --run-once
+	uv run python -m src.core.orchestration.serve --run-once
 
 pipeline-serve:
-	uv run python -m src.orchestration.serve
+	uv run python -m src.core.orchestration.serve
 
 # ---------------------------------------------------------------------------
 # Monitoring
 # ---------------------------------------------------------------------------
 drift-check:
 	DRIFT_S3_ENDPOINT=http://localhost:9000 DRIFT_S3_ACCESS_KEY=$(MINIO_ROOT_USER) DRIFT_S3_SECRET_KEY=$(MINIO_ROOT_PASSWORD) DRIFT_PUSHGATEWAY_URL=http://localhost:9091 \
-	uv run python -c "from src.orchestration.flows.monitoring_flow import monitoring_pipeline; monitoring_pipeline(s3_endpoint='http://localhost:9000', pushgateway_url='http://localhost:9091')"
+	uv run python -c "from src.core.orchestration.flows.monitoring_flow import monitoring_pipeline; monitoring_pipeline(s3_endpoint='http://localhost:9000', pushgateway_url='http://localhost:9091')"
 
 # ---------------------------------------------------------------------------
 # Code Quality

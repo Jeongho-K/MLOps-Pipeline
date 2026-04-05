@@ -43,5 +43,5 @@ EXPOSE 8000
 
 # Use exec form for graceful shutdown support
 ENTRYPOINT ["gunicorn", \
-    "-c", "src/serving/gunicorn/config.py", \
-    "src.serving.api.app:create_app()"]
+    "-c", "src/core/serving/gunicorn/config.py", \
+    "src.core.serving.api.app:create_app()"]

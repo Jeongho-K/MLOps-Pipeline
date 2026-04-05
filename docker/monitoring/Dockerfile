@@ -18,4 +18,4 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 COPY src/ ./src/
 
-ENTRYPOINT ["python3", "-m", "src.orchestration.flows.monitoring_flow"]
+ENTRYPOINT ["python3", "-m", "src.core.orchestration.flows.monitoring_flow"]

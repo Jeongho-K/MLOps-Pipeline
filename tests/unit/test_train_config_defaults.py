@@ -1,6 +1,6 @@
 """Unit tests for training configuration."""
 
-from src.training.configs.train_config import TrainConfig
+from src.plugins.cv.configs.train_config import TrainConfig
 
 
 class TestTrainConfig:

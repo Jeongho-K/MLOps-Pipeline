@@ -9,7 +9,7 @@ class TestDataAccumulationFlow:
     """Tests for data_accumulation_flow."""
 
     def test_flow_completes_with_valid_samples(self):
-        from src.orchestration.flows.data_accumulation_flow import data_accumulation_flow
+        from src.core.orchestration.flows.data_accumulation_flow import data_accumulation_flow
 
         samples = [
             {"predicted_class": "cat", "confidence": 0.98, "_s3_key": "accumulated/a.jsonl"},
@@ -23,18 +23,18 @@ class TestDataAccumulationFlow:
 
         with (
             patch(
-                "src.orchestration.flows.data_accumulation_flow.fetch_accumulated_samples",
+                "src.core.orchestration.flows.data_accumulation_flow.fetch_accumulated_samples",
                 return_value=samples,
             ),
             patch(
-                "src.orchestration.flows.data_accumulation_flow.validate_accumulation_quality",
+                "src.core.orchestration.flows.data_accumulation_flow.validate_accumulation_quality",
                 return_value=quality_result,
             ),
             patch(
-                "src.orchestration.flows.data_accumulation_flow.cleanup_accumulated",
+                "src.core.orchestration.flows.data_accumulation_flow.cleanup_accumulated",
                 return_value=1,
             ),
-            patch("src.orchestration.flows.data_accumulation_flow.create_markdown_artifact"),
+            patch("src.core.orchestration.flows.data_accumulation_flow.create_markdown_artifact"),
         ):
             result = data_accumulation_flow.fn()
 
@@ -44,7 +44,7 @@ class TestDataAccumulationFlow:
         assert result["files_cleaned"] == 1
 
     def test_flow_blocks_on_quality_gate_failure(self):
-        from src.orchestration.flows.data_accumulation_flow import data_accumulation_flow
+        from src.core.orchestration.flows.data_accumulation_flow import data_accumulation_flow
 
         samples = [{"predicted_class": "cat", "confidence": 0.98}] * 10
         quality_result = {
@@ -55,17 +55,17 @@ class TestDataAccumulationFlow:
 
         with (
             patch(
-                "src.orchestration.flows.data_accumulation_flow.fetch_accumulated_samples",
+                "src.core.orchestration.flows.data_accumulation_flow.fetch_accumulated_samples",
                 return_value=samples,
             ),
             patch(
-                "src.orchestration.flows.data_accumulation_flow.validate_accumulation_quality",
+                "src.core.orchestration.flows.data_accumulation_flow.validate_accumulation_quality",
                 return_value=quality_result,
             ),
             patch(
-                "src.orchestration.flows.data_accumulation_flow.cleanup_accumulated",
+                "src.core.orchestration.flows.data_accumulation_flow.cleanup_accumulated",
             ) as mock_cleanup,
-            patch("src.orchestration.flows.data_accumulation_flow.create_markdown_artifact"),
+            patch("src.core.orchestration.flows.data_accumulation_flow.create_markdown_artifact"),
         ):
             result = data_accumulation_flow.fn()
 
@@ -74,14 +74,14 @@ class TestDataAccumulationFlow:
         mock_cleanup.assert_not_called()
 
     def test_flow_handles_empty_accumulation(self):
-        from src.orchestration.flows.data_accumulation_flow import data_accumulation_flow
+        from src.core.orchestration.flows.data_accumulation_flow import data_accumulation_flow
 
         with (
             patch(
-                "src.orchestration.flows.data_accumulation_flow.fetch_accumulated_samples",
+                "src.core.orchestration.flows.data_accumulation_flow.fetch_accumulated_samples",
                 return_value=[],
             ),
-            patch("src.orchestration.flows.data_accumulation_flow.create_markdown_artifact"),
+            patch("src.core.orchestration.flows.data_accumulation_flow.create_markdown_artifact"),
         ):
             result = data_accumulation_flow.fn()
 
@@ -91,7 +91,7 @@ class TestDataAccumulationFlow:
         assert result["files_cleaned"] == 0
 
     def test_flow_skips_cleanup_when_quality_fails(self):
-        from src.orchestration.flows.data_accumulation_flow import data_accumulation_flow
+        from src.core.orchestration.flows.data_accumulation_flow import data_accumulation_flow
 
         samples = [{"predicted_class": "cat", "confidence": 0.95}] * 90 + [
             {"predicted_class": "dog", "confidence": 0.95}
@@ -108,17 +108,17 @@ class TestDataAccumulationFlow:
 
         with (
             patch(
-                "src.orchestration.flows.data_accumulation_flow.fetch_accumulated_samples",
+                "src.core.orchestration.flows.data_accumulation_flow.fetch_accumulated_samples",
                 return_value=samples,
             ),
             patch(
-                "src.orchestration.flows.data_accumulation_flow.validate_accumulation_quality",
+                "src.core.orchestration.flows.data_accumulation_flow.validate_accumulation_quality",
                 return_value=quality_result,
             ),
             patch(
-                "src.orchestration.flows.data_accumulation_flow.cleanup_accumulated",
+                "src.core.orchestration.flows.data_accumulation_flow.cleanup_accumulated",
             ) as mock_cleanup,
-            patch("src.orchestration.flows.data_accumulation_flow.create_markdown_artifact"),
+            patch("src.core.orchestration.flows.data_accumulation_flow.create_markdown_artifact"),
         ):
             result = data_accumulation_flow.fn()
 

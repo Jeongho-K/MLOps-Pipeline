@@ -1,6 +1,6 @@
 """Unit tests for serving API schemas."""
 
-from src.serving.api.schemas import (
+from src.core.serving.api.schemas import (
     HealthResponse,
     ModelInfoResponse,
     ModelReloadRequest,

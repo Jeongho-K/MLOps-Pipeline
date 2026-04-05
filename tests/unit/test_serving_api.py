@@ -7,9 +7,9 @@ import torch
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from src.serving.api.app import create_app
-from src.serving.api.config import ServingConfig
-from src.serving.api.dependencies import ModelState
+from src.core.serving.api.app import create_app
+from src.core.serving.api.config import ServingConfig
+from src.core.serving.api.dependencies import ModelState
 
 
 def _create_test_image() -> bytes:
@@ -170,7 +170,7 @@ class TestPredictEndpoint:
 class TestModelReloadEndpoint:
     """Tests for POST /model/reload."""
 
-    @patch("src.serving.api.routes.load_model_from_registry")
+    @patch("src.core.serving.api.routes.load_model_from_registry")
     def test_reload_success(self, mock_load) -> None:
         """Should reload model and return new info."""
         new_state = ModelState(
@@ -200,7 +200,7 @@ class TestModelReloadEndpoint:
             assert data["status"] == "ok"
             assert data["model_info"]["model_name"] == "resnet50"
 
-    @patch("src.serving.api.routes.load_model_from_registry", side_effect=RuntimeError("MLflow down"))
+    @patch("src.core.serving.api.routes.load_model_from_registry", side_effect=RuntimeError("MLflow down"))
     def test_reload_failure(self, _mock_load) -> None:
         """Should return 500 on failure."""
         config = ServingConfig()

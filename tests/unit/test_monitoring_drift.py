@@ -9,8 +9,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.monitoring.evidently.config import DriftConfig
-from src.monitoring.evidently.drift_detector import (
+from src.core.monitoring.evidently.config import DriftConfig
+from src.core.monitoring.evidently.drift_detector import (
     build_dataframe_from_logs,
     check_drift_threshold,
     detect_drift,
@@ -158,7 +158,7 @@ class TestPushDriftMetrics:
 
     def test_pushes_metrics_to_gateway(self) -> None:
         """push_drift_metrics calls push_to_gateway with correct arguments."""
-        with patch("src.monitoring.evidently.drift_detector.push_to_gateway") as mock_push:
+        with patch("src.core.monitoring.evidently.drift_detector.push_to_gateway") as mock_push:
             push_drift_metrics(
                 pushgateway_url="http://pushgateway:9091",
                 drift_detected=True,
@@ -172,7 +172,7 @@ class TestPushDriftMetrics:
 
     def test_pushes_no_drift(self) -> None:
         """push_drift_metrics works correctly when drift is not detected."""
-        with patch("src.monitoring.evidently.drift_detector.push_to_gateway") as mock_push:
+        with patch("src.core.monitoring.evidently.drift_detector.push_to_gateway") as mock_push:
             push_drift_metrics(
                 pushgateway_url="http://pushgateway:9091",
                 drift_detected=False,
@@ -185,7 +185,7 @@ class TestPushDriftMetrics:
         """Each call uses a fresh CollectorRegistry (no global state leakage)."""
         registries: list[MagicMock] = []
 
-        with patch("src.monitoring.evidently.drift_detector.push_to_gateway") as mock_push:
+        with patch("src.core.monitoring.evidently.drift_detector.push_to_gateway") as mock_push:
 
             def capture_registry(*args, **kwargs) -> None:
                 registries.append(kwargs.get("registry"))
@@ -218,7 +218,7 @@ class TestCheckDriftThreshold:
         cur = pd.DataFrame({"a": [1, 2, 3]})
 
         with patch(
-            "src.monitoring.evidently.drift_detector.detect_drift",
+            "src.core.monitoring.evidently.drift_detector.detect_drift",
             return_value=self._mock_drift_result(drift_score=0.1),
         ):
             result = check_drift_threshold(ref, cur, drift_share_threshold=0.3)
@@ -231,7 +231,7 @@ class TestCheckDriftThreshold:
         cur = pd.DataFrame({"a": [1, 2, 3]})
 
         with patch(
-            "src.monitoring.evidently.drift_detector.detect_drift",
+            "src.core.monitoring.evidently.drift_detector.detect_drift",
             return_value=self._mock_drift_result(drift_score=0.5),
         ):
             result = check_drift_threshold(ref, cur, drift_share_threshold=0.3)
@@ -244,7 +244,7 @@ class TestCheckDriftThreshold:
         cur = pd.DataFrame({"a": [1, 2, 3]})
 
         with patch(
-            "src.monitoring.evidently.drift_detector.detect_drift",
+            "src.core.monitoring.evidently.drift_detector.detect_drift",
             return_value=self._mock_drift_result(drift_score=0.3),
         ):
             result = check_drift_threshold(ref, cur, drift_share_threshold=0.3)
@@ -257,7 +257,7 @@ class TestCheckDriftThreshold:
         cur = pd.DataFrame({"a": [1, 2, 3]})
 
         with patch(
-            "src.monitoring.evidently.drift_detector.detect_drift",
+            "src.core.monitoring.evidently.drift_detector.detect_drift",
             return_value=self._mock_drift_result(drift_score=0.1),
         ):
             result = check_drift_threshold(ref, cur)
@@ -271,7 +271,7 @@ class TestCheckDriftThreshold:
         cur = pd.DataFrame({"a": [1, 2, 3]})
 
         with patch(
-            "src.monitoring.evidently.drift_detector.detect_drift",
+            "src.core.monitoring.evidently.drift_detector.detect_drift",
             return_value=self._mock_drift_result(drift_score=0.4),
         ):
             result = check_drift_threshold(ref, cur, drift_share_threshold=0.5)

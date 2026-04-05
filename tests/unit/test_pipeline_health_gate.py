@@ -13,12 +13,12 @@ class TestHealthGate:
 
     def test_low_health_score_blocks_training(self) -> None:
         """Health score below threshold should raise RuntimeError."""
-        from src.orchestration.flows.training_pipeline import training_pipeline
+        from src.core.orchestration.flows.training_pipeline import training_pipeline
 
         with (
-            patch("src.orchestration.flows.training_pipeline.prepare_dataset") as mock_prepare,
-            patch("src.orchestration.flows.training_pipeline.validate_images") as mock_validate,
-            patch("src.orchestration.flows.training_pipeline.train_model") as mock_train,
+            patch("src.core.orchestration.flows.training_pipeline.prepare_dataset") as mock_prepare,
+            patch("src.core.orchestration.flows.training_pipeline.validate_images") as mock_validate,
+            patch("src.core.orchestration.flows.training_pipeline.train_model") as mock_train,
         ):
             mock_prepare.return_value = Path("/tmp/data")
             mock_validate.return_value = {"health_score": 0.3, "total_images": 100, "issues_found": 70}
@@ -33,12 +33,12 @@ class TestHealthGate:
 
     def test_high_health_score_allows_training(self) -> None:
         """Health score above threshold should proceed to training."""
-        from src.orchestration.flows.training_pipeline import training_pipeline
+        from src.core.orchestration.flows.training_pipeline import training_pipeline
 
         with (
-            patch("src.orchestration.flows.training_pipeline.prepare_dataset") as mock_prepare,
-            patch("src.orchestration.flows.training_pipeline.validate_images") as mock_validate,
-            patch("src.orchestration.flows.training_pipeline.train_model") as mock_train,
+            patch("src.core.orchestration.flows.training_pipeline.prepare_dataset") as mock_prepare,
+            patch("src.core.orchestration.flows.training_pipeline.validate_images") as mock_validate,
+            patch("src.core.orchestration.flows.training_pipeline.train_model") as mock_train,
         ):
             mock_prepare.return_value = Path("/tmp/data")
             mock_validate.return_value = {"health_score": 0.9, "total_images": 100, "issues_found": 10}
@@ -54,11 +54,11 @@ class TestHealthGate:
 
     def test_missing_health_score_key_raises(self) -> None:
         """Missing health_score key should raise RuntimeError."""
-        from src.orchestration.flows.training_pipeline import training_pipeline
+        from src.core.orchestration.flows.training_pipeline import training_pipeline
 
         with (
-            patch("src.orchestration.flows.training_pipeline.prepare_dataset") as mock_prepare,
-            patch("src.orchestration.flows.training_pipeline.validate_images") as mock_validate,
+            patch("src.core.orchestration.flows.training_pipeline.prepare_dataset") as mock_prepare,
+            patch("src.core.orchestration.flows.training_pipeline.validate_images") as mock_validate,
         ):
             mock_prepare.return_value = Path("/tmp/data")
             mock_validate.return_value = {"total_images": 100}  # no health_score
@@ -68,7 +68,7 @@ class TestHealthGate:
 
     def test_partial_split_train_only_raises(self, tmp_path: Path) -> None:
         """Only train/ without val/ should raise FileNotFoundError."""
-        from src.orchestration.tasks.data_tasks import prepare_dataset
+        from src.core.orchestration.tasks.data_tasks import prepare_dataset
 
         (tmp_path / "train").mkdir()
         with pytest.raises(FileNotFoundError, match="train.*val"):
@@ -76,7 +76,7 @@ class TestHealthGate:
 
     def test_partial_split_val_only_raises(self, tmp_path: Path) -> None:
         """Only val/ without train/ should raise FileNotFoundError."""
-        from src.orchestration.tasks.data_tasks import prepare_dataset
+        from src.core.orchestration.tasks.data_tasks import prepare_dataset
 
         (tmp_path / "val").mkdir()
         with pytest.raises(FileNotFoundError, match="train.*val"):

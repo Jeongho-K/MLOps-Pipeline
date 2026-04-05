@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.active_learning.uncertainty.softmax_entropy import SoftmaxEntropyEstimator
+from src.plugins.cv.uncertainty import SoftmaxEntropyEstimator
 
 
 class TestSoftmaxEntropyEstimator:
