@@ -73,8 +73,10 @@ def query_error_rate(
     Returns:
         Error rate as a float (0.0 to 1.0), or None if insufficient data.
     """
+    # prometheus-fastapi-instrumentator with should_group_status_codes=True
+    # emits status="5xx" (not individual codes like "500", "502")
     query = (
-        f'sum(rate(http_requests_total{{job="{job}",status=~"5.."}}[{window}]))'
+        f'sum(rate(http_requests_total{{job="{job}",status="5xx"}}[{window}]))'
         f" / "
         f'sum(rate(http_requests_total{{job="{job}"}}[{window}]))'
     )

@@ -140,6 +140,64 @@ class LabelStudioBridge:
             )
             raise
 
+    def register_webhook(
+        self,
+        callback_url: str,
+        events: list[str] | None = None,
+    ) -> dict[str, Any] | None:
+        """Register a webhook with Label Studio, skipping if already registered.
+
+        Args:
+            callback_url: URL that Label Studio will POST events to.
+            events: Event types to subscribe to. Defaults to ANNOTATION_CREATED.
+
+        Returns:
+            Webhook registration response, or existing webhook if already registered.
+            None if registration failed.
+        """
+        events = events or ["ANNOTATION_CREATED"]
+
+        try:
+            existing = self._client.get("/api/webhooks/").json()
+            for wh in existing:
+                if wh.get("url") == callback_url:
+                    logger.info(
+                        "Webhook already registered for %s (id=%s)",
+                        callback_url,
+                        wh.get("id"),
+                    )
+                    return wh
+        except Exception:
+            logger.warning("Failed to list existing webhooks", exc_info=True)
+
+        payload: dict[str, Any] = {
+            "project": self._project_id,
+            "url": callback_url,
+            "send_payload": True,
+            "send_for_all_actions": False,
+            "is_active": True,
+            "actions": events,
+        }
+
+        try:
+            response = self._client.post("/api/webhooks/", json=payload)
+            response.raise_for_status()
+            result = response.json()
+            logger.info(
+                "Registered Label Studio webhook: url=%s, project=%d, events=%s",
+                callback_url,
+                self._project_id,
+                events,
+            )
+            return result
+        except (httpx.HTTPStatusError, httpx.TransportError):
+            logger.warning(
+                "Failed to register webhook with Label Studio at %s",
+                callback_url,
+                exc_info=True,
+            )
+            return None
+
     def get_annotation_count(self, project_id: int | None = None) -> int:
         """Get the number of tasks with completed annotations.
 

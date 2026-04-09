@@ -36,8 +36,14 @@ WORKDIR /app
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
+# Create non-root user
+RUN groupadd -r appuser && useradd -r -g appuser -d /app appuser
+
 # Copy application source
 COPY src/ ./src/
+
+RUN chown -R appuser:appuser /app
+USER appuser
 
 EXPOSE 8000
 

@@ -22,7 +22,7 @@ done
 # Create buckets and enable versioning using mc CLI
 echo "Creating buckets..."
 mc alias set local http://localhost:9000 "${MINIO_ROOT_USER}" "${MINIO_ROOT_PASSWORD}"
-for bucket in mlflow-artifacts dvc-storage model-registry prediction-logs drift-reports; do
+for bucket in mlflow-artifacts dvc-storage model-registry prediction-logs drift-reports active-learning; do
     mc mb --ignore-existing "local/${bucket}"
     mc version enable "local/${bucket}"
 done

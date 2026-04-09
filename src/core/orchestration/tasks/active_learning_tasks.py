@@ -83,17 +83,42 @@ def select_samples_for_labeling(
     predictions: list[dict],
     max_samples: int = 100,
 ) -> list[dict]:
-    """Select top-K most uncertain samples for labeling.
+    """Select samples for labeling using the plugin's SampleSelector.
 
-    Sorts by ``uncertainty_score`` descending and takes the top ``max_samples``.
+    Falls back to top-K uncertainty ranking if no plugin selector is available.
 
     Args:
         predictions: List of prediction log dicts with ``uncertainty_score``.
         max_samples: Maximum number of samples to select.
 
     Returns:
-        List of the most uncertain prediction dicts, up to max_samples.
+        List of selected prediction dicts, up to max_samples.
     """
+    if not predictions:
+        return []
+
+    uncertainties = [p.get("uncertainty_score", 0.0) for p in predictions]
+
+    # Try to use plugin SampleSelector
+    try:
+        from src.plugins.loader import load_plugin
+
+        plugin = load_plugin()
+        if plugin.sample_selector is not None:
+            selector = plugin.sample_selector()
+            indices = selector.select(uncertainties, max_samples)
+            selected = [predictions[i] for i in indices]
+            logger.info(
+                "Selected %d/%d samples via plugin selector (max_samples=%d).",
+                len(selected),
+                len(predictions),
+                max_samples,
+            )
+            return selected
+    except Exception:
+        logger.debug("Plugin sample selector unavailable, falling back to uncertainty ranking")
+
+    # Fallback: top-K by uncertainty
     sorted_preds = sorted(
         predictions,
         key=lambda p: p.get("uncertainty_score", 0.0),

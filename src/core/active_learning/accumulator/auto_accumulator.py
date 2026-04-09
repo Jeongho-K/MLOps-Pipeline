@@ -69,15 +69,49 @@ class AutoAccumulator:
     def add(self, sample: AccumulatedSample) -> None:
         """Append a pseudo-labeled sample to the buffer, flushing automatically at threshold.
 
+        If the sample carries ``image_bytes``, the image is uploaded to S3 first
+        and ``image_ref`` is set to the resulting key.  The transient
+        ``image_bytes`` field is cleared after upload to free memory.
+
         Args:
             sample: The accumulated sample to add.
         """
+        if sample.image_bytes:
+            self._upload_image(sample)
+
         with self._lock:
             self._buffer.append(sample)
             should_flush = len(self._buffer) >= self._flush_threshold
 
         if should_flush:
             self.flush()
+
+    def _upload_image(self, sample: AccumulatedSample) -> None:
+        """Upload image bytes to S3 and populate sample.image_ref.
+
+        Args:
+            sample: Sample whose ``image_bytes`` will be uploaded.
+        """
+        date_prefix = datetime.now(tz=UTC).strftime("%Y-%m-%d")
+        key = f"{self._prefix}images/{date_prefix}/{uuid.uuid4().hex}.jpg"
+        try:
+            self._s3_client.put_object(
+                Bucket=self._bucket,
+                Key=key,
+                Body=sample.image_bytes,
+                ContentType="image/jpeg",
+            )
+            sample.image_ref = key
+            logger.debug("Uploaded pseudo-label image to s3://%s/%s", self._bucket, key)
+        except (BotoCoreError, ClientError):
+            logger.warning(
+                "Failed to upload image to s3://%s/%s — image_ref will be empty",
+                self._bucket,
+                key,
+                exc_info=True,
+            )
+        finally:
+            sample.image_bytes = None
 
     def flush(self) -> int:
         """Upload all buffered records to S3 as a single JSONL file.

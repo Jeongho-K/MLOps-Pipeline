@@ -16,6 +16,12 @@ FROM base AS runtime
 COPY --from=deps /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
 
+# Create non-root user
+RUN groupadd -r appuser && useradd -r -g appuser -d /app appuser
+
 COPY src/ ./src/
+
+RUN chown -R appuser:appuser /app
+USER appuser
 
 ENTRYPOINT ["python3", "-m", "src.core.orchestration.flows.monitoring_flow"]

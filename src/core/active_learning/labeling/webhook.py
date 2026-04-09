@@ -7,11 +7,14 @@ annotation count exceeds the configured threshold.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import logging
+import os
 import time
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Request
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +25,36 @@ _last_trigger_time: float = 0.0
 _DEBOUNCE_SECONDS: float = 60.0
 
 
+async def _verify_webhook_signature(request: Request) -> None:
+    """Verify Label Studio webhook HMAC-SHA256 signature.
+
+    Skips verification if AL_WEBHOOK_SECRET is not configured.
+
+    Args:
+        request: Incoming FastAPI request.
+
+    Raises:
+        HTTPException: If signature is missing or invalid.
+    """
+    secret = os.environ.get("AL_WEBHOOK_SECRET", "")
+    if not secret:
+        return
+
+    body = await request.body()
+    signature = request.headers.get("X-Label-Studio-Signature", "")
+    if not signature:
+        raise HTTPException(status_code=401, detail="Missing webhook signature")
+
+    expected = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, signature):
+        raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
+
 @webhook_router.post("/label-studio")
-async def handle_label_studio_webhook(payload: dict[str, Any]) -> dict[str, str]:
+async def handle_label_studio_webhook(
+    request: Request,
+    payload: dict[str, Any],
+) -> dict[str, str]:
     """Handle Label Studio annotation events.
 
     On ANNOTATION_CREATED, checks if the annotation count exceeds the
@@ -31,11 +62,14 @@ async def handle_label_studio_webhook(payload: dict[str, Any]) -> dict[str, str]
     via Prefect's run_deployment API.
 
     Args:
+        request: FastAPI request for signature verification.
         payload: Raw webhook payload from Label Studio.
 
     Returns:
         Acknowledgment dict with status.
     """
+    await _verify_webhook_signature(request)
+
     action = payload.get("action", "unknown")
     task_id = payload.get("task", {}).get("id") if isinstance(payload.get("task"), dict) else payload.get("task")
     project_raw = payload.get("project")

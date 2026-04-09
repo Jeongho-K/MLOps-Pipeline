@@ -85,6 +85,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         al_config.uncertainty_threshold,
     )
 
+    # Register Label Studio webhook (best-effort: don't block startup)
+    if al_config.label_studio_api_key:
+        try:
+            from src.core.active_learning.labeling.bridge import LabelStudioBridge
+
+            bridge = LabelStudioBridge(
+                base_url=al_config.label_studio_url,
+                api_key=al_config.label_studio_api_key,
+                project_id=al_config.label_studio_project_id,
+            )
+            try:
+                bridge.register_webhook(al_config.webhook_callback_url)
+            finally:
+                bridge.close()
+        except Exception:
+            logger.warning("Failed to register Label Studio webhook on startup", exc_info=True)
+    else:
+        logger.info("Label Studio API key not set — skipping webhook registration")
+
     # Start Redis Pub/Sub subscriber for cross-worker model reload sync
     redis_url = os.environ.get("REDIS_URL", "redis://redis:6379/0")
 

@@ -55,4 +55,3 @@ jobs:
           push: true
           tags: |
             ghcr.io/${{ github.repository }}/api:${{ github.sha }}
-            ghcr.io/${{ github.repository }}/api:latest

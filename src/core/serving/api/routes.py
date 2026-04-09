@@ -64,6 +64,26 @@ async def predict(request: Request, file: UploadFile) -> PredictionResponse:
 
     # Read and validate image
     contents = await file.read()
+
+    # File size check (10 MB limit)
+    max_image_size = 10 * 1024 * 1024
+    if len(contents) > max_image_size:
+        raise HTTPException(status_code=413, detail="Image exceeds 10 MB size limit")
+    if len(contents) < 8:
+        raise HTTPException(status_code=400, detail="Uploaded file is too small to be a valid image")
+
+    # Magic bytes validation (JPEG, PNG, GIF, BMP, WebP, TIFF)
+    image_magic = (
+        b"\xff\xd8\xff",        # JPEG
+        b"\x89PNG\r\n\x1a\n",   # PNG
+        b"GIF87a", b"GIF89a",   # GIF
+        b"BM",                   # BMP
+        b"RIFF",                 # WebP (starts with RIFF)
+        b"II\x2a\x00", b"MM\x00\x2a",  # TIFF
+    )
+    if not contents[:8].startswith(image_magic):
+        raise HTTPException(status_code=400, detail="Unsupported image format")
+
     try:
         image = Image.open(io.BytesIO(contents)).convert("RGB")
     except Exception as exc:
@@ -114,6 +134,7 @@ async def predict(request: Request, file: UploadFile) -> PredictionResponse:
                         confidence=confidence,
                         probabilities=probs,
                         model_version=ms.model_version,
+                        image_bytes=contents,
                     )
                 )
 

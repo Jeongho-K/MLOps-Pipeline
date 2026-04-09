@@ -12,4 +12,8 @@
 #             - driver: nvidia
 #               count: all
 #               capabilities: [gpu]
-services: {}
+services:
+  label-studio:
+    environment:
+      LABEL_STUDIO_LOCAL_FILES_SERVING_ENABLED: "true"
+      LABEL_STUDIO_LOCAL_FILES_DOCUMENT_ROOT: /label-studio/data

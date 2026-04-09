@@ -10,7 +10,10 @@ import logging
 import os
 import tempfile
 from datetime import date, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Coroutine
 
 import boto3
 import pandas as pd
@@ -422,6 +425,33 @@ def monitoring_pipeline(
     return result
 
 
+def _run_async(coro: Coroutine[object, object, object]) -> object:
+    """Run a coroutine from sync context, handling existing event loops.
+
+    Uses ``asyncio.run()`` when no loop is running; otherwise schedules the
+    coroutine on the existing loop from a worker thread to avoid
+    ``RuntimeError: This event loop is already running`` (common inside
+    Prefect sync flows).
+
+    Args:
+        coro: Awaitable coroutine to execute.
+
+    Returns:
+        The coroutine's return value.
+    """
+    import asyncio
+    import concurrent.futures
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(asyncio.run, coro)
+        return future.result(timeout=30)
+
+
 def _trigger_retraining_on_drift() -> None:
     """Trigger the continuous training deployment when drift is detected.
 
@@ -433,10 +463,12 @@ def _trigger_retraining_on_drift() -> None:
         from src.core.orchestration.config import ContinuousTrainingConfig
 
         config = ContinuousTrainingConfig()
-        run_deployment(
-            name=config.deployment_name,
-            parameters={"trigger_source": "drift_detected"},
-            timeout=0,
+        _run_async(
+            run_deployment(
+                name=config.deployment_name,
+                parameters={"trigger_source": "drift_detected"},
+                timeout=0,
+            )
         )
         logger.info("Triggered continuous training due to drift detection.")
     except Exception:
@@ -444,24 +476,81 @@ def _trigger_retraining_on_drift() -> None:
 
 
 def _trigger_rollback() -> None:
-    """Request the champion container to reload its current model.
+    """Rollback the champion model to its previous version in MLflow and reload.
 
-    This forces the serving container to re-fetch the @champion model
-    artifact from MLflow, which acts as a safety reload. A full version
-    rollback (reverting the @champion alias to a prior version) is not
-    yet implemented and would require MLflow alias management.
+    Steps:
+    1. Find the current @champion version in MLflow.
+    2. Find the most recent version before it.
+    3. Reassign @champion alias to the previous version.
+    4. Trigger model reload on the serving container.
 
-    Best-effort: logs warning if the reload request fails.
+    Best-effort: logs warning if rollback fails.
     """
     try:
         import httpx
+        import mlflow
+        from mlflow import MlflowClient
 
         from src.core.orchestration.config_deployment import DeploymentConfig
 
         config = DeploymentConfig()
+        mlflow.set_tracking_uri(config.mlflow_tracking_uri)
+        client = MlflowClient()
+
+        # Find current champion
+        current_champion = client.get_model_version_by_alias(
+            config.registered_model_name, "champion"
+        )
+        current_version = int(current_champion.version)
+        logger.info(
+            "Current champion: %s version %d",
+            config.registered_model_name,
+            current_version,
+        )
+
+        # Find previous version (highest version number less than current)
+        all_versions = client.search_model_versions(
+            f"name='{config.registered_model_name}'"
+        )
+        previous_versions = sorted(
+            [mv for mv in all_versions if int(mv.version) < current_version],
+            key=lambda mv: int(mv.version),
+            reverse=True,
+        )
+
+        if not previous_versions:
+            logger.warning(
+                "No previous version found for %s — cannot rollback from version %d",
+                config.registered_model_name,
+                current_version,
+            )
+            return
+
+        target = previous_versions[0]
+        logger.info(
+            "Rolling back %s: version %d → version %s",
+            config.registered_model_name,
+            current_version,
+            target.version,
+        )
+
+        # Reassign @champion alias to previous version
+        client.set_registered_model_alias(
+            name=config.registered_model_name,
+            alias="champion",
+            version=target.version,
+        )
+        logger.info(
+            "Champion alias reassigned to version %s (run_id=%s)",
+            target.version,
+            target.run_id,
+        )
+
+        # Trigger reload on serving container
         response = httpx.post(config.champion_reload_url, timeout=60.0)
         response.raise_for_status()
-        logger.info("Rollback triggered: champion model reload requested.")
+        logger.info("Rollback complete: champion model reloaded.")
+
     except Exception:
         logger.warning("Failed to trigger rollback.", exc_info=True)
 
@@ -474,10 +563,12 @@ def _trigger_active_learning_pipeline() -> None:
     try:
         from prefect.deployments import run_deployment
 
-        run_deployment(
-            name="active-learning-pipeline/active-learning-deployment",
-            parameters={"trigger_source": "g5_medium_drift"},
-            timeout=0,
+        _run_async(
+            run_deployment(
+                name="active-learning-pipeline/active-learning-deployment",
+                parameters={"trigger_source": "g5_medium_drift"},
+                timeout=0,
+            )
         )
         logger.info("Triggered active learning pipeline due to medium drift.")
     except Exception:

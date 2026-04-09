@@ -10,6 +10,9 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from collections.abc import Coroutine
+
 from prefect import flow
 from prefect.artifacts import create_markdown_artifact
 
@@ -201,6 +204,32 @@ def _create_summary_artifact(summary: dict) -> None:
     create_markdown_artifact(key="data-accumulation-summary", markdown=markdown)
 
 
+def _run_async(coro: Coroutine[object, object, object]) -> object:
+    """Run a coroutine from sync context, handling existing event loops.
+
+    Uses ``asyncio.run()`` when no loop is running; otherwise schedules the
+    coroutine on the existing loop from a worker thread to avoid
+    ``RuntimeError: This event loop is already running``.
+
+    Args:
+        coro: Awaitable coroutine to execute.
+
+    Returns:
+        The coroutine's return value.
+    """
+    import asyncio
+    import concurrent.futures
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(asyncio.run, coro)
+        return future.result(timeout=30)
+
+
 def _trigger_retraining() -> bool:
     """Trigger the continuous training deployment after successful accumulation.
 
@@ -213,10 +242,12 @@ def _trigger_retraining() -> bool:
         from src.core.orchestration.config import ContinuousTrainingConfig
 
         config = ContinuousTrainingConfig()
-        run_deployment(
-            name=config.deployment_name,
-            parameters={"trigger_source": "data_accumulated"},
-            timeout=0,
+        _run_async(
+            run_deployment(
+                name=config.deployment_name,
+                parameters={"trigger_source": "data_accumulated"},
+                timeout=0,
+            )
         )
         logger.info("Triggered continuous training due to data accumulation.")
         return True

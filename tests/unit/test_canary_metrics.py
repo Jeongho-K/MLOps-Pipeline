@@ -84,8 +84,7 @@ class TestQueryErrorRate:
         call_args = mock_query.call_args  # type: ignore[attr-defined]
         query_str = call_args[0][1]
         assert 'job="api-canary"' in query_str
-        assert "5xx" not in query_str  # uses status=~"5.."
-        assert '5.."' in query_str
+        assert 'status="5xx"' in query_str  # grouped status codes from instrumentator
 
     @patch("src.core.monitoring.canary_metrics._query_prometheus")
     def test_returns_none_when_no_data(self, mock_query: object) -> None:

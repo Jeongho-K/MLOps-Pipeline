@@ -82,3 +82,9 @@ class ActiveLearningConfig(BaseSettings):
         ge=1,
         description="Default Label Studio project ID.",
     )
+
+    # Webhook
+    webhook_callback_url: str = Field(
+        default="http://api:8000/webhooks/label-studio",
+        description="URL that Label Studio will POST annotation events to.",
+    )
