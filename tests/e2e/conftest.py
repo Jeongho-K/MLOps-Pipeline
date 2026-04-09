@@ -9,9 +9,23 @@ from __future__ import annotations
 import os
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 import boto3
 import pytest
+
+# Load .env file so port overrides are available to tests
+_env_file = Path(__file__).resolve().parents[2] / ".env"
+if _env_file.exists():
+    for line in _env_file.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip()
+            # Don't override existing env vars
+            if key not in os.environ:
+                os.environ[key] = value
 
 
 def _service_is_reachable(url: str, timeout: float = 3.0) -> bool:
@@ -84,6 +98,20 @@ def prometheus_base_url() -> str:
 def grafana_base_url() -> str:
     """Return the base URL for Grafana."""
     port = os.environ.get("GRAFANA_PORT", "3000")
+    return f"http://localhost:{port}"
+
+
+@pytest.fixture(scope="session")
+def label_studio_base_url() -> str:
+    """Return the base URL for Label Studio."""
+    port = os.environ.get("LABEL_STUDIO_PORT", "8081")
+    return f"http://localhost:{port}"
+
+
+@pytest.fixture(scope="session")
+def minio_console_url() -> str:
+    """Return the base URL for the MinIO Console."""
+    port = os.environ.get("MINIO_CONSOLE_PORT", "9001")
     return f"http://localhost:{port}"
 
 

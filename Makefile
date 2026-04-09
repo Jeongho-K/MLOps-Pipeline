@@ -76,7 +76,13 @@ test-integration:
 	uv run pytest tests/integration/ -v
 
 test-e2e:
-	uv run pytest tests/e2e/ -v
+	uv run pytest tests/e2e/ -v --ignore=tests/e2e/browser/
+
+test-e2e-ui:
+	uv run pytest tests/e2e/browser/ -v --browser-channel chrome
+
+test-e2e-ui-headed:
+	uv run pytest tests/e2e/browser/ -v --browser-channel chrome --headed
 
 # ---------------------------------------------------------------------------
 # Canary Deployment (Phase C)
