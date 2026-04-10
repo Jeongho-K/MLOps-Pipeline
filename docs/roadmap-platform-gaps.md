@@ -1,7 +1,7 @@
 # Platform Gap Analysis & 구현 로드맵
 
 > **작성일**: 2026-04-10
-> **최종 업데이트**: 2026-04-10 (Phase E-1 완료)
+> **최종 업데이트**: 2026-04-10 (Phase E-1 완료, Phase E-3 부분 완료: Grafana 다중 채널 알림 베이스라인)
 > **목적**: 업계 표준 MLOps 플랫폼(ZenML, ClearML, MLRun, Lightly.ai, Google MLOps Level 2) 대비 data-flywheel 플랫폼의 격차를 식별하고, 다중 세션에 걸친 구현 로드맵을 제시한다.
 
 ---
@@ -47,7 +47,7 @@ data-flywheel은 Active Learning-First Closed-Loop MLOps 플랫폼으로, 4개 P
 | Drift Detection | ✅ | ✅ (Evidently) | ✅ | N/A | ✅ | ✅ |
 | Feature Store | ❌ | ✅ (Feast) | ⚠️ | N/A | ✅ **Core** | ✅ (Vertex) |
 | Data Lineage | ⚠️ Partial | ✅ **Core** | ✅ | N/A | ✅ | ✅ |
-| Alerting/Notification | ❌ | ✅ (Notifier) | ✅ | N/A | ✅ | ✅ |
+| Alerting/Notification | ⚠️ **Partial** (E-3 베이스라인 완료) | ✅ (Notifier) | ✅ | N/A | ✅ | ✅ |
 | Multi-Model Serving | ❌ | ✅ | ✅ | N/A | ✅ | ✅ |
 | Plugin/Domain Agnostic | ✅ Protocol | ⚠️ | ❌ | ❌ CV-only | ⚠️ | ✅ |
 
@@ -173,20 +173,20 @@ data-flywheel은 Active Learning-First Closed-Loop MLOps 플랫폼으로, 4개 P
 
 ---
 
-### Gap 7: 알림(Alerting) 시스템 미구현 (Medium) 🟡
+### Gap 7: 알림(Alerting) 시스템 미구현 (Medium → Partial) 🟡
 
-**현상**: Grafana alerting 설정 파일이 있지만, 실제 notification channel이 미설정. Quality gate 실패 시 로깅만 수행.
+**원래 현상**: Grafana alerting 설정 파일이 있지만, 실제 notification channel이 미설정. Quality gate 실패 시 로깅만 수행.
 
-**업계 기준**: 모든 production MLOps 플랫폼이 alerting을 필수로 제공. ClearML은 내장 알림, ZenML은 Notifier step 제공.
+**진행 상황**: **Phase E-3 베이스라인 완료** (2026-04-10). Grafana provisioning을 다중 채널 + severity 라우팅 구조로 재작성.
 
-**필요 조치**:
-- [ ] Grafana alert rules → Slack webhook notification channel 설정
-- [ ] Quality gate failure → Prefect notification block 연동
-- [ ] G5 HIGH severity → PagerDuty-style escalation
-- [ ] Alert rule 템플릿화 (configs/ 에 provisioning)
-- [ ] Alert firing E2E 테스트
+- [x] **Grafana alert rules → 다중 채널 notification 설정**: `configs/grafana/alerting/contact-points.yml`을 4종 integration(Email/Slack/Generic Webhook/PagerDuty)을 묶은 2개 contact point(`default-multi`, `critical-escalation`)로 교체. 모든 URL/키는 환경 변수 치환이라 비활성 채널은 자동 no-op.
+- [x] **Alert rule 템플릿화**: 이미 `configs/grafana/alerting/alerts.yml`에 3개 rule이 provisioning으로 존재 (drift-score-warning, api-error-rate-critical, api-latency-warning). E-3에서 severity 라벨 활용이 가능해지도록 라우팅 정책을 연결.
+- [x] **G5 HIGH severity → PagerDuty-style escalation**: `configs/grafana/alerting/notification-policies.yml`에 `severity = critical` 매처 + `continue: true`를 추가하여 critical 알림은 PagerDuty + 전용 Slack 메시지로 에스컬레이션되고, 동시에 기본 채널(email/slack/webhook)에도 기록되도록 이중 경로 구성.
+- [x] **Compose 환경 변수 포워딩**: `docker-compose.yml`의 `grafana` 서비스에 `GF_SMTP_*` (네이티브) + `GRAFANA_ALERT_EMAIL_ADDRESSES` / `GRAFANA_SLACK_WEBHOOK_URL` / `GRAFANA_GENERIC_WEBHOOK_URL` / `GRAFANA_PAGERDUTY_INTEGRATION_KEY` (provisioning 치환용) 추가. `.env.example`에 alerting 블록 추가.
+- [ ] Quality gate failure → Prefect notification block 연동 (후속)
+- [ ] Alert firing E2E 테스트 (docker compose 환경에서 임계치 인위 하향 → 4채널 발화 확인)
 
-**예상 작업량**: 1~2 세션
+**남은 작업량**: 0.5~1 세션 (Prefect notification block + E2E 발화 검증)
 
 ---
 
@@ -240,7 +240,7 @@ data-flywheel은 Active Learning-First Closed-Loop MLOps 플랫폼으로, 4개 P
 |:---:|------|:---:|:---:|:---:|
 | E-1 | Prefect Worker 통합 serve_all & 4개 Deployment 등록 | Gap 1 | 1 | ✅ **완료** (PR #26, `ab3d14a`) |
 | E-2 | Event-Driven Trigger E2E 검증 (webhook → CT, drift → CT/AL) + S5 수정 | Gap 1 | 1~2 | ⏳ 대기 |
-| E-3 | Alerting 시스템 구축 (Grafana + Prefect notifications) | Gap 7 | 1~2 | ⏳ 대기 |
+| E-3 | Alerting 시스템 구축 (Grafana + Prefect notifications) | Gap 7 | 1~2 | 🟡 **부분 완료** (Grafana 4채널 베이스라인 OK, Prefect block + E2E 대기) |
 | E-4 | Rate Limiting & API Authentication | Gap 9 | 1 | ⏳ 대기 |
 
 **완료 기준**: `docker compose up` 후 Label Studio annotation 완료 → 자동 CT 트리거 → 모델 갱신까지 수동 개입 없이 동작. Alert 발생 시 Slack 알림.
@@ -256,6 +256,24 @@ data-flywheel은 Active Learning-First Closed-Loop MLOps 플랫폼으로, 4개 P
   - Unit: 316/316 pass (신규 5개 serve_all 테스트 포함)
   - Runtime: Prefect API에 4개 deployment 정확한 이름/크론으로 등록, AL deployment 트리거 → worker가 flow run pick up → `fetch-uncertain-predictions` + `select-samples-for-labeling` `Completed()` 도달
   - CI: Lint (Ruff) ✓, Unit Tests ✓
+
+#### E-3 부분 완료 요약 (2026-04-10)
+
+- **스코프**: Grafana 다중 채널 알림 베이스라인. Prefect notification block 연동과 E2E 발화 검증은 후속으로 분리.
+- **변경 파일**:
+  - `configs/grafana/alerting/contact-points.yml` — `default-multi` (Email + Slack + Generic Webhook) + `critical-escalation` (PagerDuty + Slack) 2개 contact point로 전면 교체. 모든 integration 자격 증명은 `${VAR}` 치환.
+  - `configs/grafana/alerting/notification-policies.yml` — root → `default-multi`, 자식 route (`severity = critical` matcher + `continue: true`) → `critical-escalation` 로 라우팅 트리 재구성.
+  - `docker-compose.yml` — `grafana` 서비스에 `GF_SMTP_*` 네이티브 설정과 `GRAFANA_ALERT_EMAIL_ADDRESSES` / `GRAFANA_SLACK_WEBHOOK_URL` / `GRAFANA_GENERIC_WEBHOOK_URL` / `GRAFANA_PAGERDUTY_INTEGRATION_KEY` 환경 변수 포워딩 추가.
+  - `.env.example` — Grafana alerting 블록 신설 (SMTP/Slack/Webhook/PagerDuty 플레이스홀더).
+  - `docker/orchestration/Dockerfile` — Phase E-1 의 CT 런타임 결손 보완: `cleanlab>=2.7`, `cleanvision>=0.3.6` 추가 (G1 `validate_images` 태스크가 worker 내부에서 실제 import 성공하도록).
+- **설계 원칙**:
+  - **Fault tolerance**: 한 채널 장애가 알림 체인 전체를 침묵시키지 않음 — 각 integration 은 독립 receiver 로 병렬 발송.
+  - **Progressive enablement**: 비어 있는 env 변수는 해당 integration 만 no-op 로 만들고 나머지는 정상 동작.
+  - **Critical double-path**: `continue: true` 로 critical 알림이 PagerDuty 에스컬레이션 + 기본 audit 채널 양쪽에 동시 도달.
+- **검증**:
+  - YAML parse OK (`yaml.safe_load` on contact-points / notification-policies / docker-compose).
+  - Alert rule severity 라벨 (`warning` / `critical`) 이 이미 `alerts.yml` 에 존재함을 확인 → 라우팅 매처가 기존 룰에 그대로 매칭.
+  - Runtime 발화 테스트는 docker 데몬이 있는 환경에서 후속 검증 필요 (임계치 임시 하향 → 4채널 수신 확인).
 
 ### Phase F: Advanced Active Learning (우선순위 2)
 

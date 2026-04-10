@@ -1,11 +1,27 @@
 apiVersion: 1
 
+# Notification routing tree.
+#
+# Root policy -> default-multi (email + slack + generic webhook) catches every
+# alert. A child route matches ``severity = critical`` and additionally fans
+# out to ``critical-escalation`` (PagerDuty + critical Slack). ``continue: true``
+# means critical alerts are delivered through BOTH branches, so operators get
+# the PagerDuty page *and* the normal audit trail in email/Slack/webhook.
+
 policies:
   - orgId: 1
-    receiver: default-log
+    receiver: default-multi
     group_by:
       - grafana_folder
       - alertname
     group_wait: 30s
     group_interval: 5m
     repeat_interval: 4h
+    routes:
+      - receiver: critical-escalation
+        matchers:
+          - severity = critical
+        group_wait: 10s
+        group_interval: 2m
+        repeat_interval: 1h
+        continue: true

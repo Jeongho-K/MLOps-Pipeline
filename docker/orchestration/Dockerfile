@@ -24,7 +24,9 @@ RUN pip install --no-cache-dir --upgrade pip uv \
         numpy>=1.26 \
         pandas>=2.2 \
         evidently>=0.5 \
-        scikit-learn>=1.4
+        scikit-learn>=1.4 \
+        cleanlab>=2.7 \
+        cleanvision>=0.3.6
 
 # Application source so ``python -m src.core.orchestration.flows...``
 # resolves against an installed-style module layout.

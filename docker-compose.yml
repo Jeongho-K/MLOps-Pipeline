@@ -391,6 +391,22 @@ services:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/mlops-overview.json
+      # SMTP (email contact point) — leave GF_SMTP_ENABLED=false in on-prem
+      # installs that do not have an outbound SMTP relay; other channels keep
+      # firing independently.
+      GF_SMTP_ENABLED: ${GRAFANA_SMTP_ENABLED:-false}
+      GF_SMTP_HOST: ${GRAFANA_SMTP_HOST:-}
+      GF_SMTP_USER: ${GRAFANA_SMTP_USER:-}
+      GF_SMTP_PASSWORD: ${GRAFANA_SMTP_PASSWORD:-}
+      GF_SMTP_FROM_ADDRESS: ${GRAFANA_SMTP_FROM_ADDRESS:-alerts@data-flywheel.local}
+      GF_SMTP_FROM_NAME: ${GRAFANA_SMTP_FROM_NAME:-Data Flywheel Alerts}
+      GF_SMTP_SKIP_VERIFY: ${GRAFANA_SMTP_SKIP_VERIFY:-false}
+      # Custom variables consumed by configs/grafana/alerting/contact-points.yml
+      # via Grafana's ${VAR} substitution at provisioning time.
+      GRAFANA_ALERT_EMAIL_ADDRESSES: ${GRAFANA_ALERT_EMAIL_ADDRESSES:-}
+      GRAFANA_SLACK_WEBHOOK_URL: ${GRAFANA_SLACK_WEBHOOK_URL:-}
+      GRAFANA_GENERIC_WEBHOOK_URL: ${GRAFANA_GENERIC_WEBHOOK_URL:-}
+      GRAFANA_PAGERDUTY_INTEGRATION_KEY: ${GRAFANA_PAGERDUTY_INTEGRATION_KEY:-}
     volumes:
       - ./configs/grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
       - ./configs/grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
