@@ -3,10 +3,16 @@ apiVersion: 1
 # Multi-channel contact points for the data-flywheel MLOps platform.
 #
 # Every integration's credentials come from environment variables substituted
-# by Grafana at provisioning time. A channel left blank (empty URL / key) is
-# effectively a no-op: Grafana still attempts delivery and logs a failure,
-# but the remaining channels in the contact point continue to fire, so the
-# alert chain never goes fully silent when one integration is misconfigured.
+# by Grafana at provisioning time. IMPORTANT: Grafana's provisioning validator
+# rejects empty ``addresses`` / ``url`` / ``integrationKey`` at contact-point
+# save time, and because ``default-multi`` stacks three receivers in a single
+# contact point, one failing receiver can invalidate the entire contact point
+# at startup — dropping *all* notifications. To prevent that, ``.env.example``
+# ships safe sentinel values (e.g. ``https://hooks.slack.invalid/disabled``)
+# so every integration is syntactically valid. Sentinels cause per-receiver
+# delivery failures at fire time, which Grafana isolates per receiver, so an
+# operator who only configures one real channel still gets alerts on that
+# channel; the other receivers log send failures and the fan-out continues.
 #
 # Policies (notification-policies.yml) route alerts to these contact points
 # using the ``severity`` label produced by alerts.yml.
@@ -63,7 +69,7 @@ contactPoints:
         disableResolveMessage: false
         settings:
           url: ${GRAFANA_SLACK_WEBHOOK_URL}
-          title: "🚨 CRITICAL: {{ .CommonLabels.alertname }}"
+          title: "CRITICAL: {{ .CommonLabels.alertname }}"
           text: |
             *Severity*: critical — escalated
             {{ range .Alerts }}

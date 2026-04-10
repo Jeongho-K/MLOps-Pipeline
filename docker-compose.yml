@@ -402,11 +402,14 @@ services:
       GF_SMTP_FROM_NAME: ${GRAFANA_SMTP_FROM_NAME:-Data Flywheel Alerts}
       GF_SMTP_SKIP_VERIFY: ${GRAFANA_SMTP_SKIP_VERIFY:-false}
       # Custom variables consumed by configs/grafana/alerting/contact-points.yml
-      # via Grafana's ${VAR} substitution at provisioning time.
-      GRAFANA_ALERT_EMAIL_ADDRESSES: ${GRAFANA_ALERT_EMAIL_ADDRESSES:-}
-      GRAFANA_SLACK_WEBHOOK_URL: ${GRAFANA_SLACK_WEBHOOK_URL:-}
-      GRAFANA_GENERIC_WEBHOOK_URL: ${GRAFANA_GENERIC_WEBHOOK_URL:-}
-      GRAFANA_PAGERDUTY_INTEGRATION_KEY: ${GRAFANA_PAGERDUTY_INTEGRATION_KEY:-}
+      # via Grafana's ${VAR} substitution at provisioning time. Defaults are
+      # safe sentinels (RFC 2606 .invalid TLD / localhost / literal "disabled")
+      # that keep the provisioning validator happy without delivering anywhere,
+      # so a fresh ``docker compose up`` with no .env file still boots cleanly.
+      GRAFANA_ALERT_EMAIL_ADDRESSES: ${GRAFANA_ALERT_EMAIL_ADDRESSES:-alerts@localhost}
+      GRAFANA_SLACK_WEBHOOK_URL: ${GRAFANA_SLACK_WEBHOOK_URL:-https://hooks.slack.invalid/disabled}
+      GRAFANA_GENERIC_WEBHOOK_URL: ${GRAFANA_GENERIC_WEBHOOK_URL:-https://webhook.invalid/disabled}
+      GRAFANA_PAGERDUTY_INTEGRATION_KEY: ${GRAFANA_PAGERDUTY_INTEGRATION_KEY:-disabled}
     volumes:
       - ./configs/grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
       - ./configs/grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
