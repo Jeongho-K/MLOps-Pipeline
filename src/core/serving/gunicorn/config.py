@@ -7,18 +7,28 @@ All variables at module level are Gunicorn settings.
 See: https://docs.gunicorn.org/en/stable/settings.html
 """
 
+from __future__ import annotations
+
 import multiprocessing
 import os
 import shutil
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from gunicorn.arbiter import Arbiter
+    from gunicorn.workers.base import Worker
 
 
-def on_starting(server):  # type: ignore[no-untyped-def]
+def on_starting(server: Arbiter) -> None:
     """Prepare ``PROMETHEUS_MULTIPROC_DIR`` before workers fork.
 
     prometheus_client writes per-process mmap files here. The directory
     must exist and be empty at start to avoid carrying stale counters
     from a previous invocation.
+
+    Args:
+        server: The gunicorn ``Arbiter`` instance owning the worker pool.
     """
     multiproc_dir = os.environ.get("PROMETHEUS_MULTIPROC_DIR")
     if not multiproc_dir:
@@ -30,11 +40,15 @@ def on_starting(server):  # type: ignore[no-untyped-def]
     server.log.info("Initialized PROMETHEUS_MULTIPROC_DIR at %s", path)
 
 
-def child_exit(server, worker):  # type: ignore[no-untyped-def]
+def child_exit(server: Arbiter, worker: Worker) -> None:
     """Mark worker as dead for prometheus_client multiprocess mode.
 
     Prevents stale mmap files from dead workers affecting aggregated
     metrics.
+
+    Args:
+        server: The gunicorn ``Arbiter`` instance.
+        worker: The exiting gunicorn ``Worker`` instance.
     """
     if not os.environ.get("PROMETHEUS_MULTIPROC_DIR"):
         return

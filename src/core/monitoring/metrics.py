@@ -24,11 +24,11 @@ from prometheus_client import (
     multiprocess,
 )
 from prometheus_fastapi_instrumentator import Instrumentator
-from starlette.requests import Request
 from starlette.responses import Response
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
+    from starlette.requests import Request
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +97,7 @@ def setup_metrics(app: FastAPI) -> None:
             multiproc_dir,
         )
     else:
+
         async def _render_inprocess_metrics(_request: Request) -> Response:
             data = generate_latest(REGISTRY)
             return Response(content=data, media_type=CONTENT_TYPE_LATEST)

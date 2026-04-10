@@ -167,15 +167,16 @@ services:
     restart: "no"
 
   # ---------------------------------------------------------------------------
-  # Prefect worker — registers the continuous-training deployment on the
-  # Prefect server and then listens for triggers. ``.serve()`` performs
+  # Prefect worker — registers continuous-training, active-learning,
+  # monitoring, and data-accumulation deployments on the Prefect server
+  # via prefect.serve(...) and then listens for triggers. ``serve`` performs
   # an upsert, so restarting the container is idempotent.
   # ---------------------------------------------------------------------------
   prefect-worker:
     build:
       context: .
       dockerfile: docker/orchestration/Dockerfile
-    image: data-flywheel/prefect-worker:0.1.0
+    image: data-flywheel/prefect-worker:0.2.0
     environment:
       PREFECT_API_URL: http://prefect-server:4200/api
       MLFLOW_TRACKING_URI: http://mlflow:5000
@@ -183,13 +184,33 @@ services:
       AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
       TRAINING_REGISTERED_MODEL_NAME: ${SERVING_MODEL_NAME:-cv-classifier}
+      # ContinuousTrainingConfig (CT_ prefix) — shared by CT, AL, and
+      # data-accumulation deployments registered in serve_all.py.
+      CT_S3_ENDPOINT: http://minio:9000
+      CT_S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      CT_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      CT_MLFLOW_TRACKING_URI: http://mlflow:5000
+      CT_LABEL_STUDIO_URL: http://label-studio:8080
+      CT_LABEL_STUDIO_API_KEY: ${AL_LABEL_STUDIO_API_KEY:-}
+      CT_LABEL_STUDIO_PROJECT_ID: ${AL_LABEL_STUDIO_PROJECT_ID:-1}
+      CT_REGISTERED_MODEL_NAME: ${SERVING_MODEL_NAME:-cv-classifier}
+      # DriftConfig (DRIFT_ prefix) — required for monitoring deployment.
+      DRIFT_S3_ENDPOINT: http://minio:9000
+      DRIFT_S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      DRIFT_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      DRIFT_PUSHGATEWAY_URL: http://pushgateway:9091
     networks:
       - backend
+      - monitoring
     depends_on:
       prefect-server:
         condition: service_healthy
       mlflow-init:
         condition: service_completed_successfully
+      pushgateway:
+        condition: service_healthy
+      label-studio:
+        condition: service_healthy
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
