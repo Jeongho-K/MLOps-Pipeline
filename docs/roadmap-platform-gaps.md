@@ -1,7 +1,7 @@
 # Platform Gap Analysis & 구현 로드맵
 
 > **작성일**: 2026-04-10
-> **최종 업데이트**: 2026-04-12 (Phase E-2 post-audit 완료: data_accumulation narrow-catch + orchestration counter prime; E-3 Prefect notification block 선행조건 해제)
+> **최종 업데이트**: 2026-04-12 (Phase E-2 webhook deps 완료: docker/serving/Dockerfile 에 prefect+httpx 추가, webhook handler 가 역사상 처음으로 narrow-catch counter 경로에 도달)
 > **목적**: 업계 표준 MLOps 플랫폼(ZenML, ClearML, MLRun, Lightly.ai, Google MLOps Level 2) 대비 data-flywheel 플랫폼의 격차를 식별하고, 다중 세션에 걸친 구현 로드맵을 제시한다.
 
 ---
@@ -14,14 +14,14 @@
 
 - **Last updated**: 2026-04-12
 - **Current phase**: **Phase E — Event-Driven & Operational Hardening** (우선순위 1)
-- **Last commit on roadmap track**: `10c7de9 fix(orchestration): narrow data_accumulation trigger catch + prime trigger failure counter` (branch `fix/phase-e-data-accumulation-narrow-catch-and-counter-prime`, 1 code commit + 1 docs commit on top of main). PR open/merge 대기.
+- **Last commit on roadmap track**: `dbea4a0 fix(serving): add prefect + httpx to api image for webhook trigger path` (branch `fix/api-image-webhook-deps`, 1 code commit + 1 docs commit on top of main). PR merge 대기.
 - **Latest completed units**:
-  - E-2 post-audit: data_accumulation narrow-catch + counter prime (`10c7de9`) → §6-E2-post-audit
-  - E-2 runtime E2E + silent concealer 4곳 제거 → §6-E2-runtime
+  - E-2 webhook deps: api 이미지에 `prefect`+`httpx` 추가, webhook narrow-catch 경로 역사상 최초 도달 (`dbea4a0`) → §6-E2-webhook-deps
+  - E-2 post-audit: data_accumulation narrow-catch + counter prime (PR #29, `75037fe`) → §6-E2-post-audit
+  - E-2 runtime E2E + silent concealer 4곳 제거 (PR #28) → §6-E2-runtime
   - E-3 베이스라인 (`b8c7f8a`) → §6-E3
-  - E-2 서브태스크 S5 (PR #27, `9e92463`) → §6-E2-S5
-- **Next action (immediate)**: **Phase E-3 Prefect notification block 연동** — 이제 `orchestration_trigger_failure_total{trigger_type,error_class}` 가 api `/metrics` 에 scrapeable (5개 trigger_type × error_class=none 으로 prime 된 상태), PromQL alert 경로 정의 가능. 선행조건 §0 #4 가 본 세션에서 해제됨. 상세는 §4 Phase E-3 Task Board 참조.
-- **Secondary next**: api 이미지 의존성 결손 수정 (`docker/serving/Dockerfile` 에 `prefect` + `httpx` 추가) → webhook → CT E2E 완주. §6-E2-runtime 에서 최초 노출, 본 세션 Gate 2/3 에서 재확인.
+- **Next action (immediate)**: **Label Studio project seeding script + webhook happy-path E2E** — 이제 webhook handler 가 narrow-catch 까지 도달함. `AL_LABEL_STUDIO_API_KEY` + `CT_LABEL_STUDIO_PROJECT_ID=1` 을 실제 프로젝트로 시드하면 `bridge.get_annotation_count` 가 HTTP 200 을 반환하고 `min_annotation_count=50` 임계치 통과 후 `run_deployment` 이 실제로 CT flow run 을 생성한다. 이것이 iteration 3 wedge.
+- **Secondary next**: Phase E-3 Grafana alert rule on `orchestration_trigger_failure_total{trigger_type="ct_on_labeling",error_class!="none"} > 0`. Metric family 에 실제 non-zero sample 이 있으므로 rule 정의 가능 (본 세션 Layer 3 runtime 에서 LocalProtocolError 샘플 확보됨).
 - **Known blocker**: (없음)
 
 ### Verify state before resuming
@@ -46,7 +46,12 @@ grep -n "_run_async" src/core/orchestration/flows/monitoring_flow.py \
 
 # 5. Orchestration counter scrapeable on api /metrics — multiproc prime 확인
 curl -fsS http://localhost:8000/metrics | grep -cE "^# (HELP|TYPE) orchestration_trigger_failure_total|^orchestration_trigger_failure_total"
-# 예상: 7 (1 HELP + 1 TYPE + 5 primed zero samples per _KNOWN_TRIGGER_TYPES).
+# 예상: ≥7 (1 HELP + 1 TYPE + 5 primed zero samples per _KNOWN_TRIGGER_TYPES).
+# §6-E2-webhook-deps 세션 이후에는 추가로 ct_on_labeling 에 LocalProtocolError series 가 붙어 있을 수 있음 (stale sample 은 정상).
+
+# 5b. Webhook handler 가 narrow-catch 경로에 도달 가능한지 확인 (§0 #1 해제 증명)
+docker compose exec -T api python -c "import prefect, httpx; print('prefect=', prefect.__version__, 'httpx=', httpx.__version__)"
+# 예상: 두 버전 모두 출력. ImportError 면 api 이미지가 이전 버전 (pre-dbea4a0) 이므로 rebuild 필요.
 
 # 6. Drift fixture seeder 동작 미리 보기
 uv run python -c "
@@ -61,7 +66,8 @@ print('medium drift_score:', detect_drift(ref, curr)['drift_score'])  # 0.5 expe
 
 ### Open follow-up tickets (carried over across sessions)
 
-- [ ] **[api 이미지 의존성 결손]** `docker/serving/Dockerfile` 에 `prefect` + `httpx` 추가. 현재 webhook 핸들러가 `ImportError` 로 silent no-op (narrow-catch 가 노출). Label Studio project 시드 + API key 세팅 후 webhook → CT E2E 완주. 출처: §6-E2-runtime. **우선순위: High** (Gate 2/3 quality gates 에서도 재확인됨 — webhook 경로가 역사적으로 한 번도 발화한 적 없음).
+- [ ] **[Label Studio 프로젝트 시드 스크립트 + webhook happy-path E2E]** 본 세션(§6-E2-webhook-deps) 에서 api 이미지 deps 를 고쳐 webhook handler 가 narrow-catch 경로까지 도달하는 것을 확인했으나, real happy-path (`run_deployment` 실제 발화, CT flow run 생성) 는 Label Studio 프로젝트 실재 + `AL_LABEL_STUDIO_API_KEY` 설정 + ≥50 annotation 전제. 다음 세션(iteration 3) 에서 `scripts/seed_label_studio_project.py` 를 작성하고 `CT_MIN_ANNOTATION_COUNT=0` 으로 bypass 테스트 또는 실제 annotation 시드 후 real webhook 발화 검증. **우선순위: High** (§0 #1 의 후속, Gap 1 webhook 경로 완전 close).
+- [ ] **[api 컨테이너 root logger level WARNING]** Gate 3 runtime-verifier 가 발견: gunicorn 의 root logger 가 `WARNING` level 이라서 `logger.info("Label Studio webhook received...")` at `src/core/active_learning/labeling/webhook.py:78` 가 `docker compose logs api` 에서 보이지 않는다. Handler 자체는 정상 실행 (narrow-catch 가 ERROR 승격으로 찍힘) 지만 operator 가 "webhook fired" breadcrumb 을 잃는다. `src/core/serving/gunicorn/config.py` 에서 `LOG_LEVEL=INFO` 고정 또는 compose env 로 노출. **우선순위: Low** (observability 개선, 버그 아님). 출처: 본 세션 §6-E2-webhook-deps Gate 3.
 - [ ] **[serving `/model/reload` 422]** `_trigger_rollback()` 의 MLflow alias 이동은 성공하지만 serving 컨테이너 `/model/reload` 엔드포인트가 422 Unprocessable Entity 를 반환해 새 champion 이 실전 반영되지 않음. payload schema 확인 필요. 출처: §6-E2-runtime.
 - [ ] **[`ContinuousTrainingConfig.deployment_name` 기본값 불일치]** `config.py` 의 default 는 `"continuous-training/continuous-training-deployment"` 이지만 Phase E-1 (`serve_all.py`) 가 등록한 실제 이름은 `"continuous-training-pipeline/continuous-training-deployment"` (`-pipeline` 접미사). 본 세션 runtime E2E 에서 happy-path 가 `True` 를 반환했음 — docker compose 환경 변수 혹은 배치 환경이 이 default 를 overriding 하고 있을 가능성. 다음 세션에서 default 를 정합하거나 `CT_DEPLOYMENT_NAME` 을 compose 에 고정. **우선순위: Medium**. 출처: 본 세션 §6-E2-post-audit 탐색.
 - [ ] **[`CT_*` env vars 작업 풀 inherit 검증]** `data-accumulation-pipeline` work pool 이 `CT_*` 환경 변수를 올바르게 상속하는지 확인하여 `ContinuousTrainingConfig()` 가 production 에서 `ValidationError` 로 쓰러지지 않도록 한다. 본 세션에서 narrow-catch 를 의도적으로 ValidationError 에 열지 않았기 때문에 (loud failure 원칙) 이 전제가 깨지면 data accumulation flow 전체가 터진다. **우선순위: Low** (docs/verification follow-up). 출처: 본 세션 §6-E2-post-audit 설계 결정.
@@ -426,7 +432,7 @@ data-flywheel은 Active Learning-First Closed-Loop MLOps 플랫폼으로, 4개 P
 | 순서 | 작업 | Gap | 예상 세션 | 상태 |
 |:---:|------|:---:|:---:|:---:|
 | E-1 | Prefect Worker 통합 serve_all & 4개 Deployment 등록 | Gap 1 | 1 | ✅ **완료** (PR #26, `ab3d14a`) |
-| E-2 | Event-Driven Trigger E2E 검증 (webhook → CT, drift → CT/AL) + S5 signature fix | Gap 1 | 1~2 | 🟢 **대부분 완료** (S5 + drift HIGH + drift MEDIUM 모두 PASS; webhook E2E 는 api 이미지 의존성 결손으로 partial) |
+| E-2 | Event-Driven Trigger E2E 검증 (webhook → CT, drift → CT/AL) + S5 signature fix | Gap 1 | 1~2 | 🟢 **거의 완료** (S5 + drift HIGH + drift MEDIUM + webhook narrow-catch 전부 PASS; webhook happy-path 는 Label Studio 프로젝트 시드 후속) |
 | E-3 | Alerting 시스템 구축 (Grafana + Prefect notifications) | Gap 7 | 1~2 | 🟡 **부분 완료** (Grafana 4채널 베이스라인 OK, Prefect block + E2E 대기) |
 | E-4 | Rate Limiting & API Authentication | Gap 9 | 1 | ⏳ 대기 |
 
@@ -443,6 +449,7 @@ data-flywheel은 Active Learning-First Closed-Loop MLOps 플랫폼으로, 4개 P
 
 - [x] ~~S5: `active_learning_flow` 에 `trigger_source: str = "manual"` 인자 추가 + summary 전파 + 회귀 테스트 2건~~ → §6-E2-S5
 - [~] Label Studio annotation webhook → `continuous-training-deployment` 런타임 발화 검증 (docker compose up 필요) — **Partial**: route 200 OK 확인 + narrow-catch 가 pre-existing `ModuleNotFoundError` 노출. 실제 deployment 발화는 api 이미지 의존성 추가 후속 티켓으로 분리 → §6-E2-runtime
+- [x] ~~**api 이미지 의존성 결손 수정** — `docker/serving/Dockerfile` 에 `prefect>=3.0` + `httpx>=0.27` 추가 → webhook handler 가 narrow-catch 경로에 역사상 최초 도달, LocalProtocolError 로 counter +1, run_deployment 호출 전에 fail-fast~~ → §6-E2-webhook-deps (§0 #1 High priority closed — webhook happy-path 는 Label Studio 프로젝트 시드 후속으로 분리)
 - [x] ~~Drift HIGH 감지 → `continuous-training-deployment` 자동 트리거 + MLflow rollback 체인 검증~~ → §6-E2-runtime
 - [x] ~~Drift MEDIUM 감지 → `active-learning-deployment` + `continuous-training-deployment` 병행 트리거 검증 (S5 해제로 이제 가능)~~ → §6-E2-runtime
 - [x] ~~**알려진 follow-up 티켓**: `_trigger_active_learning_pipeline()` 의 bare `except Exception:` 을 `ImportError` + `PrefectException` 으로 좁히고 실패 시 `log.ERROR` 또는 metric 승격 (silent failure concealer 제거)~~ → §6-E2-runtime (4곳 모두 좁힘, `orchestration_trigger_failure_total` counter 신설)
@@ -741,6 +748,60 @@ data-flywheel은 Active Learning-First Closed-Loop MLOps 플랫폼으로, 4개 P
   - **[`CT_*` env vars in data-accumulation work pool]** work pool 이 `CT_*` 상속 여부 검증. `ValidationError` 가 터지면 loud failure 로 맞지만 production 운영 전 먼저 확인. 우선순위: Low.
   - **[Prometheus multiproc prime 감사 CI smoke]** `curl /metrics | grep -c orchestration_trigger_failure_total >= 7` 을 CI 에 고정. 미래 gunicorn 설정 변경 (preload_app, post_fork hook) 이 prime path 를 무력화하지 않도록. 우선순위: Low.
   - **[Worker ↔ api /metrics federation]** worker-side narrow-catch counter 증가분이 api `/metrics` 로 federate 되지 않음 (cross-process gap). 본 세션에서 Layer 3 runtime 으로 확인. Phase E-3 notification block 설계 단계에서 Pushgateway 경유 혹은 worker 측 /metrics 노출 중 하나로 해결. 우선순위: Medium.
+
+---
+
+### 6-E2-webhook-deps · api image deps fix — webhook narrow-catch 경로 최초 도달 (2026-04-12)
+
+- **Commit**: `dbea4a0 fix(serving): add prefect + httpx to api image for webhook trigger path` (branch `fix/api-image-webhook-deps`). Docs commit appended afterwards.
+- **PR**: (pending — opened after §6 block commit per §0.5 C protocol)
+- **Gap**: Gap 1 (Event-Driven Automation) — webhook path
+- **Scope**: Close §0 carry-over follow-up #1 (High priority): api 이미지 의존성 결손. Label Studio annotation webhook handler 가 역사상 처음으로 narrow-catch counter 경로에 도달하도록 한다. 1-line Dockerfile 수정 + runtime E2E 검증.
+
+- **Problem (webhook 이 history 전체에서 silent no-op 이었던 이유)**: `src/core/active_learning/labeling/webhook.py:109-128` 의 lazy import block 은 `prefect.deployments.run_deployment`, `httpx`, `PrefectException`, `LabelStudioBridge`, `record_trigger_failure`, `ContinuousTrainingConfig` 을 try/except ImportError 로 감싸고 있었는데, **`docker/serving/Dockerfile` 의 `uv pip install` 블록에 `prefect` 와 `httpx` 가 아예 빠져 있었다**. 그 결과 매 `POST /webhooks/label-studio` 호출마다 ImportError 가 발생 → 외부 except 절이 로그만 찍고 200 OK 반환 → Label Studio 는 endpoint 가 "healthy" 하다고 판단 → 실제 CT trigger 는 한 번도 발화한 적 없음. §6-E2-runtime 에서 narrow-catch 가 이 ModuleNotFoundError 를 노출했지만 당시 세션 범위 밖이라 §0 #1 High priority follow-up 으로 carry-over 되어 있었다.
+
+- **Changes** ([x] = 이번 블록에서 완료, [ ] = 후속):
+  - [x] `docker/serving/Dockerfile`: builder stage 의 `uv pip install --system --no-cache-dir` 블록에 `prefect>=3.0` + `httpx>=0.27` 2줄 추가. 버전 floor 는 `pyproject.toml` line 19 (prefect) 와 lines 43/57 (httpx) 와 정확히 일치. Multi-stage `COPY --from=builder /usr/local/lib/python3.11/site-packages` 가 runtime stage 로 새 wheel 들을 그대로 운반.
+  - [x] api 이미지 rebuild (`docker compose build api`) + force-recreate (`docker compose up -d --force-recreate api`) — builder 단계만 invalidate, 90.5s in 빌드.
+  - [x] No source code changes — webhook handler 는 iteration 1 에서 이미 `record_trigger_failure` 공유 helper 로 migrate 되어 있어 Dockerfile 수정만으로 narrow-catch 경로 전체가 "깨어난다".
+  - [x] No unit test changes — 기존 `tests/unit/test_labeling_webhook.py::TestWebhookNarrowExceptionHandling` 이 handler code path 을 이미 커버.
+  - [ ] (iteration 3 wedge) Label Studio 프로젝트 시드 스크립트 + webhook happy-path E2E — 실제 `run_deployment` 발화, CT flow run 생성까지 검증.
+  - [ ] (follow-up) api 컨테이너 root logger level 을 INFO 로 bump — `logger.info` breadcrumb 이 `docker compose logs` 에 surface 되도록.
+
+- **Files changed**:
+  - 수정: `docker/serving/Dockerfile` (builder stage `uv pip install` 블록에 2 dep 추가, 총 +3/-1 lines)
+
+- **설계 원칙**:
+  - **Smallest viable wedge**: 1-line Dockerfile 수정으로 High priority ticket close. 범위를 Label Studio 시드까지 확장하지 않고 의도적으로 iteration 3 로 분리 — iteration 1 critique 의 "fixture-seeding scope creep" 경고 준수.
+  - **Compound engineering**: iteration 1 의 counter prime 작업(orchestration_counter 에 5개 trigger_type × error_class=none 을 `/metrics` 에 prime) 을 이번 iteration 이 **in-process trigger site 에 대해 처음으로 실제 exercise** 한다. Worker-side trigger sites (drift/rollback/AL/accumulation) 는 Worker ↔ api /metrics 연합 gap (§0 Medium priority) 때문에 여전히 cross-process 로는 invisible 하지만, webhook 은 api 프로세스 안에서 실행되므로 counter 증가분이 즉시 `/metrics` 에 노출됨 — prime 아키텍처가 처음으로 end-to-end 로 증명된다.
+  - **Narrow catch proves itself**: `except httpx.HTTPError:` 가 `LocalProtocolError` (subclass) 도 정확히 포착함을 live 에서 증명. 원래 기대했던 `HTTPStatusError` 대신 `LocalProtocolError` 가 raise 된 이유는 `AL_LABEL_STUDIO_API_KEY` 가 비어 있어 `Authorization: Token ` (trailing space 만) 헤더가 malformed → httpx 가 network call 전에 client-side 에서 reject. 이것 또한 valid narrow-catch 결과로, empty API key 문제는 iteration 3 에서 seeding 과 함께 자연 해소.
+
+- **Verification**:
+  - Unit: iter-1 baseline (335 passed) 그대로 유지 — no code changes, no test changes.
+  - Lint: no `.py` changes → no ruff impact.
+  - Layer 3 runtime (docker compose up + rebuilt api):
+    1. **Import check**: `docker compose exec api python -c "import prefect, httpx; print(prefect.__version__, httpx.__version__)"` → **`3.6.26 0.28.1`**. No ImportError. 역사상 최초로 api 컨테이너에서 `prefect`/`httpx` 가 importable 해짐.
+    2. **Counter BEFORE**: `curl /metrics | grep ct_on_labeling` → 단일 line `orchestration_trigger_failure_total{error_class="none",trigger_type="ct_on_labeling"} 0.0` (iter-1 prime 그대로).
+    3. **Synthetic POST**: `curl -X POST http://localhost:8000/webhooks/label-studio -H "Content-Type: application/json" -d '{"action": "ANNOTATION_CREATED", "project": {"id": 1}, "task": {"id": 1}}'` → **HTTP 200** `{"status":"received"}`.
+    4. **Counter AFTER**: 신규 series `orchestration_trigger_failure_total{error_class="LocalProtocolError",trigger_type="ct_on_labeling"} 1.0` 추가. Delta = **+1** on non-"none" label.
+    5. **Log trace**: `docker compose logs api` 에서 `ERROR:src.core.monitoring.orchestration_counter:Orchestration trigger failed: trigger_type=ct_on_labeling error=LocalProtocolError` + full traceback. 공유 helper `record_trigger_failure` 가 정상 발화 — promoted logger name `src.core.monitoring.orchestration_counter` 그대로 확인됨.
+    6. **No new CT flow run**: Prefect API (`get_client().read_flow_runs()`) 로 최근 3분 내 flow run 수 조회 → **0**. Narrow-catch 가 `run_deployment()` 호출 전에 fail-fast 했음을 증명.
+    7. **Playwright (headed Chrome per memory)**: `http://localhost:4200/runs?flow=continuous-training-pipeline` 에 navigate, screenshot `webhook-narrow-catch-iter2.png`. 필터된 run 목록에 신규 항목 없음 확인.
+  - Quality gates (`/quality-pipeline`):
+    - Gate 1 (plan-verifier) **PASS** — 1/1 blocking Dockerfile item, 5 runtime proofs 전부 충족.
+    - Gate 2 (pr-reviewer iter 1) **PASS** — 0 critical/high, 0 code changes. Version floor 가 pyproject.toml 과 정확히 일치 확인.
+    - Gate 3 (runtime-verifier) **PASS** — 4/4 contracts 독립 재검증. **Bonus finding**: gunicorn root logger level 이 WARNING 이라 `logger.info("Label Studio webhook received...")` at webhook.py:78 이 suppressed — handler 는 정상 실행 중이지만 operator 가 "webhook fired" breadcrumb 을 잃는다. Iteration 이 도입한 regression 이 아니라 pre-existing observability gap 이므로 new follow-up 으로 분리.
+
+- **Unblocked**:
+  - **webhook 경로 narrow-catch counter 가 `/metrics` 에 live 증명됨**: iteration 1 의 prime architecture (`orchestration_counter` + `record_trigger_failure` + `setup_metrics` prime loop) 가 in-process trigger site 에 대해 end-to-end 로 동작함을 최초로 증명. 이것은 Phase E-3 Grafana alert rule 을 `ct_on_labeling` 에 대해 정의할 수 있게 만드는 결정적 근거 — metric family 에 real non-zero sample 이 존재함.
+  - **iteration 3 wedge 정의 가능**: Label Studio 프로젝트 시드 스크립트 작성 + `AL_LABEL_STUDIO_API_KEY` 세팅 + annotation 시드(or bypass via `CT_MIN_ANNOTATION_COUNT=0`) → real `run_deployment` 발화 → CT flow run 생성 체인 검증. Gap 1 webhook 경로를 완전히 close.
+  - **api 컨테이너 가 이제 `prefect` + `httpx` 를 가진다**: future serving-side integration (e.g. direct Prefect API queries from FastAPI endpoints, Label Studio bridge enhancements) 의 기반.
+
+- **Remaining for parent phase (E-2)**: → §4 Phase E Task Board. 잔여는 Label Studio 프로젝트 시드 후속 iteration 과 webhook happy-path E2E.
+
+- **New follow-up tickets (carry-over to §0)**:
+  - **[Label Studio 프로젝트 시드 스크립트 + webhook happy-path E2E]** iteration 3 의 primary wedge. `scripts/seed_label_studio_project.py` 작성 또는 `CT_MIN_ANNOTATION_COUNT=0` bypass 로 real `run_deployment` 발화 검증. 우선순위: High.
+  - **[api 컨테이너 root logger level WARNING]** `logger.info` breadcrumb 이 `docker compose logs api` 에 surface 안 됨 (Gate 3 runtime-verifier finding). Handler 자체는 정상 — observability gap. `src/core/serving/gunicorn/config.py` 에서 `LOG_LEVEL=INFO` 고정 or compose env 로 노출. 우선순위: Low.
 
 ---
 
