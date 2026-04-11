@@ -107,48 +107,73 @@ async def _maybe_trigger_retraining(project_id: int | None) -> None:
         return
 
     try:
-        from src.core.orchestration.config import ContinuousTrainingConfig
+        import httpx
+        from prefect.deployments import run_deployment
+        from prefect.exceptions import PrefectException
 
-        config = ContinuousTrainingConfig()
-
-        # Check annotation count
         from src.core.active_learning.labeling.bridge import LabelStudioBridge
-
-        bridge = LabelStudioBridge(
-            base_url=config.label_studio_url,
-            api_key=config.label_studio_api_key,
-            project_id=config.label_studio_project_id,
+        from src.core.monitoring.orchestration_counter import (
+            ORCHESTRATION_TRIGGER_FAILURE_COUNTER,
         )
+        from src.core.orchestration.config import ContinuousTrainingConfig
+    except ImportError as exc:
+        logger.error(
+            "Webhook trigger missing dependency — cannot import: %s",
+            type(exc).__name__,
+            exc_info=True,
+        )
+        return
+
+    def _record_failure(exc: BaseException) -> None:
+        ORCHESTRATION_TRIGGER_FAILURE_COUNTER.labels(
+            trigger_type="ct_on_labeling",
+            error_class=type(exc).__name__,
+        ).inc()
+        logger.error(
+            "Webhook trigger failed: error=%s",
+            type(exc).__name__,
+            exc_info=True,
+        )
+
+    config = ContinuousTrainingConfig()
+
+    bridge = LabelStudioBridge(
+        base_url=config.label_studio_url,
+        api_key=config.label_studio_api_key,
+        project_id=config.label_studio_project_id,
+    )
+    try:
         try:
             count = bridge.get_annotation_count(project_id)
-        finally:
-            bridge.close()
-
-        if count < config.min_annotation_count:
-            logger.info(
-                "Annotation count (%d) below threshold (%d). No trigger.",
-                count,
-                config.min_annotation_count,
-            )
+        except httpx.HTTPError as exc:
+            _record_failure(exc)
             return
+    finally:
+        bridge.close()
 
-        # Trigger continuous training flow
+    if count < config.min_annotation_count:
         logger.info(
-            "Annotation count (%d) >= threshold (%d). Triggering continuous training.",
+            "Annotation count (%d) below threshold (%d). No trigger.",
             count,
             config.min_annotation_count,
         )
+        return
 
-        from prefect.deployments import run_deployment
+    logger.info(
+        "Annotation count (%d) >= threshold (%d). Triggering continuous training.",
+        count,
+        config.min_annotation_count,
+    )
 
+    try:
         await run_deployment(
             name=config.deployment_name,
             parameters={"trigger_source": "labeling_complete"},
             timeout=0,
         )
+    except PrefectException as exc:
+        _record_failure(exc)
+        return
 
-        _last_trigger_time = time.monotonic()
-        logger.info("Continuous training deployment triggered successfully.")
-
-    except Exception:
-        logger.warning("Failed to trigger retraining from webhook.", exc_info=True)
+    _last_trigger_time = time.monotonic()
+    logger.info("Continuous training deployment triggered successfully.")

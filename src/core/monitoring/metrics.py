@@ -62,6 +62,13 @@ ACCUMULATION_BUFFER_GAUGE = Gauge(
     "Current number of samples in the auto-accumulation buffer",
 )
 
+# Re-exported from orchestration_counter so the FastAPI /metrics endpoint
+# surfaces it. The canonical definition lives in a FastAPI-free module because
+# the Prefect worker image does not ship prometheus_fastapi_instrumentator.
+from src.core.monitoring.orchestration_counter import (  # noqa: E402, F401
+    ORCHESTRATION_TRIGGER_FAILURE_COUNTER,
+)
+
 
 def setup_metrics(app: FastAPI) -> None:
     """Attach Prometheus instrumentation and expose ``/metrics``.

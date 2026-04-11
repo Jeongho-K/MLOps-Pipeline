@@ -482,3 +482,127 @@ class TestMonitoringPipelineFailOnDrift:
 
         mock_upload.assert_called_once()
         assert result["status"] == "completed"
+
+
+class TestNarrowTriggerExceptions:
+    """Regression tests: the three trigger helpers must narrow their catches
+    so a broken Prefect/MLflow path cannot silently degrade to a no-op.
+
+    Phase E-2 S5 lost an entire AL trigger path because a bare
+    ``except Exception:`` swallowed ``PrefectException``. These tests pin the
+    failure counter behavior and the narrow catch scope.
+    """
+
+    @staticmethod
+    def _counter_value(trigger_type: str, error_class: str) -> float:
+        from src.core.monitoring.metrics import (
+            ORCHESTRATION_TRIGGER_FAILURE_COUNTER,
+        )
+
+        return ORCHESTRATION_TRIGGER_FAILURE_COUNTER.labels(
+            trigger_type=trigger_type,
+            error_class=error_class,
+        )._value.get()
+
+    def test_trigger_retraining_on_drift_narrow_catches_prefect_exception(
+        self,
+    ) -> None:
+        """PrefectException from run_deployment is caught and counted."""
+        from prefect.exceptions import PrefectException
+
+        from src.core.orchestration.flows.monitoring_flow import (
+            _trigger_retraining_on_drift,
+        )
+
+        before = self._counter_value("ct_on_drift", "PrefectException")
+
+        def boom(*_args: Any, **_kwargs: Any) -> Any:
+            raise PrefectException("deployment not found")
+
+        # run_deployment is @sync_compatible, so patching it here — before
+        # the function imports it locally — intercepts the executable call.
+        with patch(
+            "prefect.deployments.run_deployment",
+            side_effect=boom,
+        ):
+            _trigger_retraining_on_drift()  # must not raise
+
+        after = self._counter_value("ct_on_drift", "PrefectException")
+        assert after == before + 1
+
+    def test_trigger_active_learning_narrow_catches_prefect_exception(
+        self,
+    ) -> None:
+        """PrefectException from AL run_deployment is caught and counted."""
+        from prefect.exceptions import PrefectException
+
+        from src.core.orchestration.flows.monitoring_flow import (
+            _trigger_active_learning_pipeline,
+        )
+
+        before = self._counter_value(
+            "al_on_medium_drift", "PrefectException"
+        )
+
+        def boom(*_args: Any, **_kwargs: Any) -> Any:
+            raise PrefectException("AL deployment missing")
+
+        with patch(
+            "prefect.deployments.run_deployment",
+            side_effect=boom,
+        ):
+            _trigger_active_learning_pipeline()
+
+        after = self._counter_value(
+            "al_on_medium_drift", "PrefectException"
+        )
+        assert after == before + 1
+
+    def test_trigger_retraining_unexpected_exception_propagates(self) -> None:
+        """A ValueError (not PrefectException) must NOT be swallowed —
+        silent no-op is exactly the anti-pattern we're removing."""
+        from src.core.orchestration.flows.monitoring_flow import (
+            _trigger_retraining_on_drift,
+        )
+
+        def boom(*_args: Any, **_kwargs: Any) -> Any:
+            raise ValueError("genuine bug, should propagate")
+
+        with patch(
+            "prefect.deployments.run_deployment",
+            side_effect=boom,
+        ):
+            try:
+                _trigger_retraining_on_drift()
+            except ValueError:
+                return
+            raise AssertionError(
+                "ValueError was silently swallowed — narrow catch regression"
+            )
+
+    def test_trigger_rollback_narrow_catches_mlflow_exception(self) -> None:
+        """MlflowException from client calls is caught and counted."""
+        from mlflow.exceptions import MlflowException
+
+        from src.core.orchestration.flows.monitoring_flow import (
+            _trigger_rollback,
+        )
+
+        before = self._counter_value("rollback", "MlflowException")
+
+        mock_client = MagicMock()
+        mock_client.get_model_version_by_alias.side_effect = MlflowException(
+            "alias not found"
+        )
+
+        with (
+            patch(
+                "mlflow.MlflowClient",
+                return_value=mock_client,
+            ),
+            patch("mlflow.set_tracking_uri"),
+        ):
+            _trigger_rollback()
+
+        after = self._counter_value("rollback", "MlflowException")
+        assert after == before + 1

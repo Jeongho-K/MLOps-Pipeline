@@ -452,27 +452,61 @@ def _run_async(coro: Coroutine[object, object, object]) -> object:
         return future.result(timeout=30)
 
 
+def _record_trigger_failure(trigger_type: str, exc: BaseException) -> None:
+    """Increment the orchestration trigger failure counter and log ERROR.
+
+    Used by narrow ``except`` blocks in the trigger helpers below. Kept as a
+    local helper so the import of the Prometheus counter stays lazy — the
+    monitoring flow module is imported by the Prefect worker, where the
+    metrics module's FastAPI-specific imports must not fire at collection
+    time.
+    """
+    from src.core.monitoring.orchestration_counter import (
+        ORCHESTRATION_TRIGGER_FAILURE_COUNTER,
+    )
+
+    ORCHESTRATION_TRIGGER_FAILURE_COUNTER.labels(
+        trigger_type=trigger_type,
+        error_class=type(exc).__name__,
+    ).inc()
+    logger.error(
+        "Orchestration trigger failed: trigger_type=%s error=%s",
+        trigger_type,
+        type(exc).__name__,
+        exc_info=True,
+    )
+
+
 def _trigger_retraining_on_drift() -> None:
     """Trigger the continuous training deployment when drift is detected.
 
-    Best-effort: logs warning if triggering fails (e.g. deployment not registered).
+    Narrowly catches expected infra failures (Prefect not importable /
+    deployment not registered). Unexpected exceptions propagate — a silent
+    no-op is a worse bug than a loud failure in the monitoring flow.
     """
     try:
         from prefect.deployments import run_deployment
+        from prefect.exceptions import PrefectException
+    except ImportError as exc:
+        _record_trigger_failure("ct_on_drift", exc)
+        return
 
-        from src.core.orchestration.config import ContinuousTrainingConfig
+    from src.core.orchestration.config import ContinuousTrainingConfig
 
-        config = ContinuousTrainingConfig()
-        _run_async(
-            run_deployment(
-                name=config.deployment_name,
-                parameters={"trigger_source": "drift_detected"},
-                timeout=0,
-            )
+    config = ContinuousTrainingConfig()
+    # ``run_deployment`` is @sync_compatible: called from sync code it
+    # synchronously creates the flow run and returns a FlowRun object.
+    # Wrapping in ``_run_async`` double-runs the result and raised ValueError
+    # — a regression that the previous bare ``except Exception`` concealed.
+    try:
+        run_deployment(
+            name=config.deployment_name,
+            parameters={"trigger_source": "drift_detected"},
+            timeout=0,
         )
         logger.info("Triggered continuous training due to drift detection.")
-    except Exception:
-        logger.warning("Failed to trigger retraining on drift.", exc_info=True)
+    except PrefectException as exc:
+        _record_trigger_failure("ct_on_drift", exc)
 
 
 def _trigger_rollback() -> None:
@@ -484,13 +518,20 @@ def _trigger_rollback() -> None:
     3. Reassign @champion alias to the previous version.
     4. Trigger model reload on the serving container.
 
-    Best-effort: logs warning if rollback fails.
+    Narrowly catches expected infra failures (missing deps, MLflow errors,
+    HTTP errors). Unexpected exceptions propagate so a broken rollback path
+    cannot fail silently.
     """
     try:
         import httpx
         import mlflow
         from mlflow import MlflowClient
+        from mlflow.exceptions import MlflowException
+    except ImportError as exc:
+        _record_trigger_failure("rollback", exc)
+        return
 
+    try:
         from src.core.orchestration.config_deployment import DeploymentConfig
 
         config = DeploymentConfig()
@@ -551,25 +592,30 @@ def _trigger_rollback() -> None:
         response.raise_for_status()
         logger.info("Rollback complete: champion model reloaded.")
 
-    except Exception:
-        logger.warning("Failed to trigger rollback.", exc_info=True)
+    except (MlflowException, httpx.HTTPError) as exc:
+        _record_trigger_failure("rollback", exc)
 
 
 def _trigger_active_learning_pipeline() -> None:
     """Trigger the active learning pipeline to increase data collection.
 
-    Best-effort: logs warning if triggering fails.
+    Narrowly catches Prefect-related infra failures so that the previous
+    silent no-op (bare ``except Exception``) — which masked the E-2 S5 unknown
+    kwarg regression for an entire phase — cannot recur.
     """
     try:
         from prefect.deployments import run_deployment
+        from prefect.exceptions import PrefectException
+    except ImportError as exc:
+        _record_trigger_failure("al_on_medium_drift", exc)
+        return
 
-        _run_async(
-            run_deployment(
-                name="active-learning-pipeline/active-learning-deployment",
-                parameters={"trigger_source": "g5_medium_drift"},
-                timeout=0,
-            )
+    try:
+        run_deployment(
+            name="active-learning-pipeline/active-learning-deployment",
+            parameters={"trigger_source": "g5_medium_drift"},
+            timeout=0,
         )
         logger.info("Triggered active learning pipeline due to medium drift.")
-    except Exception:
-        logger.warning("Failed to trigger active learning pipeline.", exc_info=True)
+    except PrefectException as exc:
+        _record_trigger_failure("al_on_medium_drift", exc)
