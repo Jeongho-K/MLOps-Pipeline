@@ -199,6 +199,11 @@ services:
       DRIFT_S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       DRIFT_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
       DRIFT_PUSHGATEWAY_URL: http://pushgateway:9091
+    ports:
+      # Worker-side Prometheus /metrics HTTP endpoint. Published on the
+      # loopback so host-side curl works during runtime verification;
+      # Prometheus scrapes via the internal ``monitoring`` network DNS name.
+      - "127.0.0.1:${PREFECT_WORKER_METRICS_PORT:-9092}:9092"
     networks:
       - backend
       - monitoring
