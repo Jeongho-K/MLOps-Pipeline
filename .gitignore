@@ -248,3 +248,8 @@ superpowers/
 diagrams/
 
 .playwright-mcp/
+
+# Quality-gates pipeline session state (kept at repo root per user preference)
+quality-gates.local.md
+# Layer 3 runtime evidence screenshots
+prefect-*-layer3.png

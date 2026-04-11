@@ -112,6 +112,20 @@ def setup_metrics(app: FastAPI) -> None:
         app.add_route("/metrics", _render_inprocess_metrics)
         logger.info("Prometheus metrics enabled at /metrics (in-process)")
 
+    # Prime orchestration_trigger_failure_total so the labeled metric family
+    # is scrapeable before any real failure occurs. In multiproc mode this
+    # runs inside each gunicorn worker after fork, so every worker writes
+    # its own mmap entry; MultiProcessCollector merges them at scrape time.
+    # Without this, Phase E-3 notification-block wiring cannot define a
+    # PromQL alert on a metric family that has never been emitted.
+    from src.core.monitoring.orchestration_counter import _KNOWN_TRIGGER_TYPES
+
+    for _trigger_type in _KNOWN_TRIGGER_TYPES:
+        ORCHESTRATION_TRIGGER_FAILURE_COUNTER.labels(
+            trigger_type=_trigger_type,
+            error_class="none",
+        ).inc(0)
+
 
 def record_prediction(
     predicted_class: int,

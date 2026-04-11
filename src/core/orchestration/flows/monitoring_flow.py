@@ -10,10 +10,7 @@ import logging
 import os
 import tempfile
 from datetime import date, timedelta
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from collections.abc import Coroutine
+from typing import Any
 
 import boto3
 import pandas as pd
@@ -425,58 +422,6 @@ def monitoring_pipeline(
     return result
 
 
-def _run_async(coro: Coroutine[object, object, object]) -> object:
-    """Run a coroutine from sync context, handling existing event loops.
-
-    Uses ``asyncio.run()`` when no loop is running; otherwise schedules the
-    coroutine on the existing loop from a worker thread to avoid
-    ``RuntimeError: This event loop is already running`` (common inside
-    Prefect sync flows).
-
-    Args:
-        coro: Awaitable coroutine to execute.
-
-    Returns:
-        The coroutine's return value.
-    """
-    import asyncio
-    import concurrent.futures
-
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(coro)
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(asyncio.run, coro)
-        return future.result(timeout=30)
-
-
-def _record_trigger_failure(trigger_type: str, exc: BaseException) -> None:
-    """Increment the orchestration trigger failure counter and log ERROR.
-
-    Used by narrow ``except`` blocks in the trigger helpers below. Kept as a
-    local helper so the import of the Prometheus counter stays lazy — the
-    monitoring flow module is imported by the Prefect worker, where the
-    metrics module's FastAPI-specific imports must not fire at collection
-    time.
-    """
-    from src.core.monitoring.orchestration_counter import (
-        ORCHESTRATION_TRIGGER_FAILURE_COUNTER,
-    )
-
-    ORCHESTRATION_TRIGGER_FAILURE_COUNTER.labels(
-        trigger_type=trigger_type,
-        error_class=type(exc).__name__,
-    ).inc()
-    logger.error(
-        "Orchestration trigger failed: trigger_type=%s error=%s",
-        trigger_type,
-        type(exc).__name__,
-        exc_info=True,
-    )
-
-
 def _trigger_retraining_on_drift() -> None:
     """Trigger the continuous training deployment when drift is detected.
 
@@ -488,7 +433,10 @@ def _trigger_retraining_on_drift() -> None:
         from prefect.deployments import run_deployment
         from prefect.exceptions import PrefectException
     except ImportError as exc:
-        _record_trigger_failure("ct_on_drift", exc)
+        # lazy-import: keeps worker paths FastAPI-free
+        from src.core.monitoring.orchestration_counter import record_trigger_failure
+
+        record_trigger_failure("ct_on_drift", exc)
         return
 
     from src.core.orchestration.config import ContinuousTrainingConfig
@@ -496,8 +444,10 @@ def _trigger_retraining_on_drift() -> None:
     config = ContinuousTrainingConfig()
     # ``run_deployment`` is @sync_compatible: called from sync code it
     # synchronously creates the flow run and returns a FlowRun object.
-    # Wrapping in ``_run_async`` double-runs the result and raised ValueError
-    # — a regression that the previous bare ``except Exception`` concealed.
+    # Wrapping it in ``asyncio.run`` double-runs the result and raised
+    # ValueError — a regression that the previous bare ``except Exception``
+    # concealed. The narrow ``PrefectException`` catch below preserves the
+    # loud-failure property.
     try:
         run_deployment(
             name=config.deployment_name,
@@ -506,7 +456,10 @@ def _trigger_retraining_on_drift() -> None:
         )
         logger.info("Triggered continuous training due to drift detection.")
     except PrefectException as exc:
-        _record_trigger_failure("ct_on_drift", exc)
+        # lazy-import: keeps worker paths FastAPI-free
+        from src.core.monitoring.orchestration_counter import record_trigger_failure
+
+        record_trigger_failure("ct_on_drift", exc)
 
 
 def _trigger_rollback() -> None:
@@ -528,7 +481,10 @@ def _trigger_rollback() -> None:
         from mlflow import MlflowClient
         from mlflow.exceptions import MlflowException
     except ImportError as exc:
-        _record_trigger_failure("rollback", exc)
+        # lazy-import: keeps worker paths FastAPI-free
+        from src.core.monitoring.orchestration_counter import record_trigger_failure
+
+        record_trigger_failure("rollback", exc)
         return
 
     try:
@@ -593,7 +549,10 @@ def _trigger_rollback() -> None:
         logger.info("Rollback complete: champion model reloaded.")
 
     except (MlflowException, httpx.HTTPError) as exc:
-        _record_trigger_failure("rollback", exc)
+        # lazy-import: keeps worker paths FastAPI-free
+        from src.core.monitoring.orchestration_counter import record_trigger_failure
+
+        record_trigger_failure("rollback", exc)
 
 
 def _trigger_active_learning_pipeline() -> None:
@@ -607,7 +566,10 @@ def _trigger_active_learning_pipeline() -> None:
         from prefect.deployments import run_deployment
         from prefect.exceptions import PrefectException
     except ImportError as exc:
-        _record_trigger_failure("al_on_medium_drift", exc)
+        # lazy-import: keeps worker paths FastAPI-free
+        from src.core.monitoring.orchestration_counter import record_trigger_failure
+
+        record_trigger_failure("al_on_medium_drift", exc)
         return
 
     try:
@@ -618,4 +580,7 @@ def _trigger_active_learning_pipeline() -> None:
         )
         logger.info("Triggered active learning pipeline due to medium drift.")
     except PrefectException as exc:
-        _record_trigger_failure("al_on_medium_drift", exc)
+        # lazy-import: keeps worker paths FastAPI-free
+        from src.core.monitoring.orchestration_counter import record_trigger_failure
+
+        record_trigger_failure("al_on_medium_drift", exc)

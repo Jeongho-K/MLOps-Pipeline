@@ -10,9 +10,6 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from collections.abc import Coroutine
-
 from prefect import flow
 from prefect.artifacts import create_markdown_artifact
 
@@ -204,53 +201,45 @@ def _create_summary_artifact(summary: dict) -> None:
     create_markdown_artifact(key="data-accumulation-summary", markdown=markdown)
 
 
-def _run_async(coro: Coroutine[object, object, object]) -> object:
-    """Run a coroutine from sync context, handling existing event loops.
-
-    Uses ``asyncio.run()`` when no loop is running; otherwise schedules the
-    coroutine on the existing loop from a worker thread to avoid
-    ``RuntimeError: This event loop is already running``.
-
-    Args:
-        coro: Awaitable coroutine to execute.
-
-    Returns:
-        The coroutine's return value.
-    """
-    import asyncio
-    import concurrent.futures
-
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(coro)
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(asyncio.run, coro)
-        return future.result(timeout=30)
-
-
 def _trigger_retraining() -> bool:
     """Trigger the continuous training deployment after successful accumulation.
+
+    Narrowly catches expected infra failures (Prefect import, Prefect API).
+    ``pydantic.ValidationError`` from missing ``CT_*`` env vars propagates —
+    same loud-failure semantic as ``monitoring_flow._trigger_retraining_on_drift``.
+    ``run_deployment`` is ``@sync_compatible``: called from sync code it
+    returns a ``FlowRun`` synchronously, so the previous ``_run_async`` wrapper
+    was double-running and raising ``ValueError`` — concealed by the old
+    bare ``except Exception`` and only exposed now that we narrow the catch.
 
     Returns:
         True if the deployment was triggered successfully, False otherwise.
     """
     try:
         from prefect.deployments import run_deployment
+        from prefect.exceptions import PrefectException
+    except ImportError as exc:
+        # lazy-import: keeps worker paths FastAPI-free
+        from src.core.monitoring.orchestration_counter import record_trigger_failure
 
-        from src.core.orchestration.config import ContinuousTrainingConfig
-
-        config = ContinuousTrainingConfig()
-        _run_async(
-            run_deployment(
-                name=config.deployment_name,
-                parameters={"trigger_source": "data_accumulated"},
-                timeout=0,
-            )
-        )
-        logger.info("Triggered continuous training due to data accumulation.")
-        return True
-    except Exception:
-        logger.warning("Failed to trigger retraining on data accumulation.", exc_info=True)
+        record_trigger_failure("ct_on_accumulation", exc)
         return False
+
+    from src.core.orchestration.config import ContinuousTrainingConfig
+
+    config = ContinuousTrainingConfig()
+    try:
+        run_deployment(
+            name=config.deployment_name,
+            parameters={"trigger_source": "data_accumulated"},
+            timeout=0,
+        )
+    except PrefectException as exc:
+        # lazy-import: keeps worker paths FastAPI-free
+        from src.core.monitoring.orchestration_counter import record_trigger_failure
+
+        record_trigger_failure("ct_on_accumulation", exc)
+        return False
+
+    logger.info("Triggered continuous training due to data accumulation.")
+    return True

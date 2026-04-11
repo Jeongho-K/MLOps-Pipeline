@@ -112,9 +112,12 @@ async def _maybe_trigger_retraining(project_id: int | None) -> None:
         from prefect.exceptions import PrefectException
 
         from src.core.active_learning.labeling.bridge import LabelStudioBridge
-        from src.core.monitoring.orchestration_counter import (
-            ORCHESTRATION_TRIGGER_FAILURE_COUNTER,
-        )
+
+        # lazy-import: keeps worker paths FastAPI-free (even though this
+        # handler runs in the FastAPI serving container, the import is
+        # kept inside the try-block so the symbol load is co-located with
+        # the other deferred imports.)
+        from src.core.monitoring.orchestration_counter import record_trigger_failure
         from src.core.orchestration.config import ContinuousTrainingConfig
     except ImportError as exc:
         logger.error(
@@ -123,17 +126,6 @@ async def _maybe_trigger_retraining(project_id: int | None) -> None:
             exc_info=True,
         )
         return
-
-    def _record_failure(exc: BaseException) -> None:
-        ORCHESTRATION_TRIGGER_FAILURE_COUNTER.labels(
-            trigger_type="ct_on_labeling",
-            error_class=type(exc).__name__,
-        ).inc()
-        logger.error(
-            "Webhook trigger failed: error=%s",
-            type(exc).__name__,
-            exc_info=True,
-        )
 
     config = ContinuousTrainingConfig()
 
@@ -146,7 +138,7 @@ async def _maybe_trigger_retraining(project_id: int | None) -> None:
         try:
             count = bridge.get_annotation_count(project_id)
         except httpx.HTTPError as exc:
-            _record_failure(exc)
+            record_trigger_failure("ct_on_labeling", exc)
             return
     finally:
         bridge.close()
@@ -172,7 +164,7 @@ async def _maybe_trigger_retraining(project_id: int | None) -> None:
             timeout=0,
         )
     except PrefectException as exc:
-        _record_failure(exc)
+        record_trigger_failure("ct_on_labeling", exc)
         return
 
     _last_trigger_time = time.monotonic()
