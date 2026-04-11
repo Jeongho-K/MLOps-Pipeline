@@ -41,6 +41,54 @@ logger = logging.getLogger(__name__)
 MONITORING_CRON = "0 3 * * *"  # daily at 03:00 UTC
 DATA_ACCUMULATION_CRON = "0 */6 * * *"  # every 6 hours
 
+# Worker-side Prometheus metrics HTTP server port. The Prefect worker is a
+# long-running process (``prefect.serve`` blocks), so its own in-process
+# Prometheus registry must be exposed as a second scrape target alongside the
+# api container — api ``/metrics`` cannot see this process's counter state.
+WORKER_METRICS_PORT = 9092
+
+
+def _start_metrics_server(port: int = WORKER_METRICS_PORT) -> None:
+    """Start a Prometheus metrics HTTP endpoint for the worker process.
+
+    The worker-side trigger helpers in ``monitoring_flow`` and
+    ``data_accumulation_flow`` increment
+    ``ORCHESTRATION_TRIGGER_FAILURE_COUNTER`` into the current process's
+    in-process registry. The api container's ``/metrics`` endpoint lives in a
+    different process (and under gunicorn multiproc) and cannot see these
+    increments. To make worker-side failures observable to Prometheus we
+    expose the worker's own registry on a local HTTP endpoint that Prometheus
+    scrapes as a separate job (see ``configs/prometheus/prometheus.yml``).
+
+    Prime every entry in ``_KNOWN_TRIGGER_TYPES`` with an ``error_class='none'``
+    zero sample so the labeled metric family is visible to Prometheus before
+    any real failure has occurred. Mirrors the api-side
+    ``setup_metrics`` prime loop introduced in Phase E-2 post-audit.
+
+    ``prometheus_client.start_http_server`` spawns a daemon thread and
+    returns, so this call is non-blocking and survives for the lifetime of
+    the parent process.
+
+    Args:
+        port: TCP port to bind the metrics HTTP server to. Defaults to
+            :data:`WORKER_METRICS_PORT`.
+    """
+    from prometheus_client import start_http_server
+
+    from src.core.monitoring.orchestration_counter import (
+        _KNOWN_TRIGGER_TYPES,
+        ORCHESTRATION_TRIGGER_FAILURE_COUNTER,
+    )
+
+    for trigger_type in _KNOWN_TRIGGER_TYPES:
+        ORCHESTRATION_TRIGGER_FAILURE_COUNTER.labels(
+            trigger_type=trigger_type,
+            error_class="none",
+        ).inc(0)
+
+    start_http_server(port)
+    logger.info("Worker metrics server listening on :%d", port)
+
 
 def _build_continuous_training_parameters(cfg: ContinuousTrainingConfig) -> dict[str, Any]:
     """Mirror the parameter set that the former CT-only serve script used.
@@ -171,6 +219,11 @@ def main() -> None:
         len(deployments),
         ", ".join(d.name for d in deployments),
     )
+
+    # Start the worker-side metrics HTTP endpoint before the blocking serve()
+    # call. ``prometheus_client.start_http_server`` runs in a daemon thread so
+    # it does not block the serve loop.
+    _start_metrics_server()
 
     try:
         serve(*deployments)

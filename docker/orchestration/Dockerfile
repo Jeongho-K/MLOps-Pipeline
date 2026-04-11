@@ -32,6 +32,11 @@ RUN pip install --no-cache-dir --upgrade pip uv \
 # resolves against an installed-style module layout.
 COPY src/ ./src/
 
+# Prometheus /metrics HTTP endpoint served by prometheus_client.start_http_server
+# inside serve_all.py. Prometheus scrapes this port as a separate job so
+# worker-side orchestration_trigger_failure_total increments become visible.
+EXPOSE 9092
+
 # ``prefect.serve(...)`` is blocking — it registers every RunnerDeployment
 # on the Prefect server and then polls for triggers. The container runs as
 # a long-lived service, restarted by compose on failure.

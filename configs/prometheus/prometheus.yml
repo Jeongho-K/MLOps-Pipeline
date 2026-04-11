@@ -21,3 +21,13 @@ scrape_configs:
     honor_labels: true
     static_configs:
       - targets: ["pushgateway:9091"]
+
+  - job_name: "prefect-worker"
+    # Worker-side Prometheus counter exposure. The Prefect worker is a
+    # long-running process that owns its own in-process registry — api
+    # /metrics cannot see its counter state. Scrape the worker directly so
+    # orchestration_trigger_failure_total increments on ct_on_drift,
+    # rollback, al_on_medium_drift, ct_on_accumulation become observable.
+    static_configs:
+      - targets: ["prefect-worker:9092"]
+    metrics_path: /metrics
