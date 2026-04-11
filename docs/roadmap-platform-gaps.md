@@ -1,7 +1,7 @@
 # Platform Gap Analysis & 구현 로드맵
 
 > **작성일**: 2026-04-10
-> **최종 업데이트**: 2026-04-12 (Phase E-2 webhook deps 완료: docker/serving/Dockerfile 에 prefect+httpx 추가, webhook handler 가 역사상 처음으로 narrow-catch counter 경로에 도달)
+> **최종 업데이트**: 2026-04-12 (Phase E-2 worker metrics 완료: prefect-worker 가 자체 /metrics HTTP endpoint 를 9092 포트로 expose, Prometheus 가 4 worker-side trigger site 를 scrapeable — Grafana alerting 의 마지막 선행조건 해제)
 > **목적**: 업계 표준 MLOps 플랫폼(ZenML, ClearML, MLRun, Lightly.ai, Google MLOps Level 2) 대비 data-flywheel 플랫폼의 격차를 식별하고, 다중 세션에 걸친 구현 로드맵을 제시한다.
 
 ---
@@ -14,14 +14,14 @@
 
 - **Last updated**: 2026-04-12
 - **Current phase**: **Phase E — Event-Driven & Operational Hardening** (우선순위 1)
-- **Last commit on roadmap track**: `dbea4a0 fix(serving): add prefect + httpx to api image for webhook trigger path` (branch `fix/api-image-webhook-deps`, 1 code commit + 1 docs commit on top of main). PR merge 대기.
+- **Last commit on roadmap track**: `2fffabd feat(orchestration): expose worker metrics HTTP endpoint for cross-process counter federation` (branch `fix/worker-metrics-http-exposure`, 1 code commit + 1 docs commit on top of main). PR merge 대기.
 - **Latest completed units**:
-  - E-2 webhook deps: api 이미지에 `prefect`+`httpx` 추가, webhook narrow-catch 경로 역사상 최초 도달 (`dbea4a0`) → §6-E2-webhook-deps
+  - E-2 worker metrics: prefect-worker 가 `/metrics` HTTP endpoint (:9092) 를 expose, Prometheus scrape job 추가, 16 series × 3 jobs 관측 가능 (`2fffabd`) → §6-E2-worker-metrics
+  - E-2 webhook deps: api 이미지에 `prefect`+`httpx` 추가 (PR #30, `fc9b6b7`) → §6-E2-webhook-deps
   - E-2 post-audit: data_accumulation narrow-catch + counter prime (PR #29, `75037fe`) → §6-E2-post-audit
   - E-2 runtime E2E + silent concealer 4곳 제거 (PR #28) → §6-E2-runtime
-  - E-3 베이스라인 (`b8c7f8a`) → §6-E3
-- **Next action (immediate)**: **Label Studio project seeding script + webhook happy-path E2E** — 이제 webhook handler 가 narrow-catch 까지 도달함. `AL_LABEL_STUDIO_API_KEY` + `CT_LABEL_STUDIO_PROJECT_ID=1` 을 실제 프로젝트로 시드하면 `bridge.get_annotation_count` 가 HTTP 200 을 반환하고 `min_annotation_count=50` 임계치 통과 후 `run_deployment` 이 실제로 CT flow run 을 생성한다. 이것이 iteration 3 wedge.
-- **Secondary next**: Phase E-3 Grafana alert rule on `orchestration_trigger_failure_total{trigger_type="ct_on_labeling",error_class!="none"} > 0`. Metric family 에 실제 non-zero sample 이 있으므로 rule 정의 가능 (본 세션 Layer 3 runtime 에서 LocalProtocolError 샘플 확보됨).
+- **Next action (immediate)**: **Phase E-3 Grafana alert rules on all 5 trigger sites** — 이제 `orchestration_trigger_failure_total{error_class!="none"} > 0` 이 api, api-canary, prefect-worker 3개 Prometheus job 전체에서 queryable. `configs/grafana/alerting/alerts.yml` 에 5개 trigger_type 별 rule 추가 → 이미 구성된 4채널 (§6-E3) 으로 라우팅. Iteration 4 의 primary wedge.
+- **Secondary next**: Label Studio 프로젝트 시드 스크립트 + webhook happy-path E2E — iter 2 에서 narrow-catch 까지 도달 증명, 남은 건 `AL_LABEL_STUDIO_API_KEY` 설정 + `CT_MIN_ANNOTATION_COUNT=0` bypass 로 `run_deployment` 실제 발화 검증. Grafana alert rule 작업과 병렬로 진행 가능.
 - **Known blocker**: (없음)
 
 ### Verify state before resuming
@@ -53,6 +53,28 @@ curl -fsS http://localhost:8000/metrics | grep -cE "^# (HELP|TYPE) orchestration
 docker compose exec -T api python -c "import prefect, httpx; print('prefect=', prefect.__version__, 'httpx=', httpx.__version__)"
 # 예상: 두 버전 모두 출력. ImportError 면 api 이미지가 이전 버전 (pre-dbea4a0) 이므로 rebuild 필요.
 
+# 5c. Worker /metrics scrapeable (§0 #6 Worker↔api federation 해제 증명)
+curl -fsS http://localhost:9092/metrics | grep -cE "^# (HELP|TYPE) orchestration_trigger_failure_total|^orchestration_trigger_failure_total"
+# 예상: 7 (1 HELP + 1 TYPE + 5 primed zero samples). Worker 가 자체 /metrics endpoint 를 9092 포트로 expose.
+
+# 5d. Prometheus scrape job for prefect-worker is healthy
+curl -fsS 'http://localhost:9090/api/v1/targets?scrapePool=prefect-worker' | uv run python -c "
+import sys, json
+d = json.load(sys.stdin)
+t = d['data']['activeTargets'][0]
+print(f'{t[\"scrapeUrl\"]} health={t[\"health\"]} lastError={t.get(\"lastError\") or \"none\"}')
+"
+# 예상: http://prefect-worker:9092/metrics health=up lastError=none
+
+# 5e. All 3 scrape jobs visible across Prometheus query
+curl -fsS 'http://localhost:9090/api/v1/query' --data-urlencode 'query=orchestration_trigger_failure_total' | uv run python -c "
+import sys, json
+d = json.load(sys.stdin)
+jobs = sorted({r['metric'].get('job') for r in d['data']['result']})
+print(f'jobs: {jobs}')
+"
+# 예상: ['api', 'api-canary', 'prefect-worker'] (3개 distinct jobs).
+
 # 6. Drift fixture seeder 동작 미리 보기
 uv run python -c "
 from scripts.seed_drift_fixtures import _deterministic_medium_current
@@ -72,9 +94,8 @@ print('medium drift_score:', detect_drift(ref, curr)['drift_score'])  # 0.5 expe
 - [ ] **[`ContinuousTrainingConfig.deployment_name` 기본값 불일치]** `config.py` 의 default 는 `"continuous-training/continuous-training-deployment"` 이지만 Phase E-1 (`serve_all.py`) 가 등록한 실제 이름은 `"continuous-training-pipeline/continuous-training-deployment"` (`-pipeline` 접미사). 본 세션 runtime E2E 에서 happy-path 가 `True` 를 반환했음 — docker compose 환경 변수 혹은 배치 환경이 이 default 를 overriding 하고 있을 가능성. 다음 세션에서 default 를 정합하거나 `CT_DEPLOYMENT_NAME` 을 compose 에 고정. **우선순위: Medium**. 출처: 본 세션 §6-E2-post-audit 탐색.
 - [ ] **[`CT_*` env vars 작업 풀 inherit 검증]** `data-accumulation-pipeline` work pool 이 `CT_*` 환경 변수를 올바르게 상속하는지 확인하여 `ContinuousTrainingConfig()` 가 production 에서 `ValidationError` 로 쓰러지지 않도록 한다. 본 세션에서 narrow-catch 를 의도적으로 ValidationError 에 열지 않았기 때문에 (loud failure 원칙) 이 전제가 깨지면 data accumulation flow 전체가 터진다. **우선순위: Low** (docs/verification follow-up). 출처: 본 세션 §6-E2-post-audit 설계 결정.
 - [ ] **[Prometheus multiproc prime 감사]** 본 세션에서 `setup_metrics()` 안에 prime 블록을 넣었으며 gunicorn worker 가 fork 후 각자 mmap 파일을 터치해 5개 trigger_type 이 `/metrics` 에 모두 노출됨을 live 상태에서 확인. 이 가정이 깨지는 경로(예: 미래의 gunicorn `preload_app = True` 설정 변경 + `post_fork` 재-prime 미등록) 를 CI smoke 에 고정. `curl /metrics | grep -c orchestration_trigger_failure_total >= 7` 를 CI 에 추가. **우선순위: Low**. 출처: 본 세션 §6-E2-post-audit 설계 결정.
-- [ ] **[Worker ↔ api `/metrics` 연합 부재]** 본 세션 Layer 3 E2E 에서 확인: worker 프로세스의 narrow-catch 카운터 증가분은 worker 의 in-process Prometheus 레지스트리에만 남고 api 컨테이너의 `/metrics` 로 federate 되지 않는다. 현재는 (1) webhook path 만 api 프로세스 안에서 실행되므로 `/metrics` 에 직접 노출되고 (2) worker path (`ct_on_drift`, `rollback`, `al_on_medium_drift`, `ct_on_accumulation`) 의 실제 실패는 Pushgateway 경유 또는 worker 측 `/metrics` 노출이 필요. Phase E-3 Prefect notification block 설계 단계에서 함께 해결. **우선순위: Medium**. 출처: 본 세션 §6-E2-post-audit Gate 3 live observation.
 - [ ] **[Alert 발화 E2E]** docker compose 환경에서 drift/error rate/latency 임계치를 인위적으로 하향 → Grafana 4채널(Email/Slack/Generic Webhook/PagerDuty) 동시 수신 확인. 출처: §6-E3, Gap 7.
-- [ ] **[Prefect notification block]** Quality gate 실패(G1~G5) → Prefect notification block 연동. 이제 `orchestration_trigger_failure_total{trigger_type,error_class}` 가 api `/metrics` 에 scrapeable (본 세션 §6-E2-post-audit 에서 prime 완료) → PromQL → notification block 경로 정의 가능. **전제 조건 해제됨**: §0 #4 가 본 세션에서 close 됨. 남은 작업은 worker-side counter federation (위 Worker ↔ api 연합 부재 티켓) 과 alert rule 정의. 출처: Gap 7 잔여, §6-E3.
+- [ ] **[Prefect notification block + Grafana alert rule]** Quality gate 실패(G1~G5) 및 narrow-catch counter 증가 → Grafana alert rule (+Prefect notification block) 연동. **모든 전제 조건 해제됨**: §0 #4 (counter prime, §6-E2-post-audit) 와 §0 #6 (Worker ↔ api federation, §6-E2-worker-metrics) 두 선행조건이 모두 본 Phase 에서 close 됨. 남은 작업은 `configs/grafana/alerting/alerts.yml` 에 `orchestration_trigger_failure_total{error_class!="none"} > 0` rule 을 5개 trigger_type 별로 추가 (or 단일 rule 에 label 매처 사용) + severity 라벨링 → 이미 구성된 4채널 (§6-E3) 로 라우팅. Iteration 4 의 primary wedge. 출처: Gap 7 잔여, §6-E3.
 
 ---
 
@@ -462,7 +483,8 @@ data-flywheel은 Active Learning-First Closed-Loop MLOps 플랫폼으로, 4개 P
 - [x] ~~G5 HIGH severity → PagerDuty-style escalation (`configs/grafana/alerting/notification-policies.yml` 의 `severity = critical` matcher + `continue: true`)~~ → §6-E3
 - [x] ~~Compose 환경 변수 포워딩 (`GF_SMTP_*` + `GRAFANA_*` + `.env.example` alerting 블록)~~ → §6-E3
 - [x] ~~**`orchestration_trigger_failure_total` 관측 표면 활성화 (counter prime)** — `setup_metrics()` 안에서 fork 후 per-worker prime 하여 5개 trigger_type 이 api `/metrics` 에서 즉시 scrapeable~~ → §6-E2-post-audit (§0 #4 closed — Prefect notification block 의 선행조건 해제)
-- [ ] Quality gate failure → Prefect notification block 연동 (후속 — 선행조건 해제됨)
+- [x] ~~**Worker ↔ api `/metrics` federation — prefect-worker 가 `/metrics` HTTP endpoint (:9092) 를 자체 expose, Prometheus scrape job 추가**~~ → §6-E2-worker-metrics (§0 #6 closed — Prefect notification block 의 모든 선행조건 해제; 이제 4개 worker-side trigger site (`ct_on_drift`, `rollback`, `al_on_medium_drift`, `ct_on_accumulation`) 가 Grafana alert rule 의 대상으로 queryable)
+- [ ] Quality gate failure → Prefect notification block + Grafana alert rule 정의 (후속 — 모든 선행조건 해제됨, 다음 iteration primary wedge)
 - [ ] Alert firing E2E 테스트 (docker compose 환경에서 임계치 인위 하향 → 4채널 발화 확인)
 
 #### E-4 Task Board
@@ -802,6 +824,60 @@ data-flywheel은 Active Learning-First Closed-Loop MLOps 플랫폼으로, 4개 P
 - **New follow-up tickets (carry-over to §0)**:
   - **[Label Studio 프로젝트 시드 스크립트 + webhook happy-path E2E]** iteration 3 의 primary wedge. `scripts/seed_label_studio_project.py` 작성 또는 `CT_MIN_ANNOTATION_COUNT=0` bypass 로 real `run_deployment` 발화 검증. 우선순위: High.
   - **[api 컨테이너 root logger level WARNING]** `logger.info` breadcrumb 이 `docker compose logs api` 에 surface 안 됨 (Gate 3 runtime-verifier finding). Handler 자체는 정상 — observability gap. `src/core/serving/gunicorn/config.py` 에서 `LOG_LEVEL=INFO` 고정 or compose env 로 노출. 우선순위: Low.
+
+---
+
+### 6-E2-worker-metrics · Worker /metrics HTTP exposure + Prometheus scrape job (2026-04-12)
+
+- **Commit**: `2fffabd feat(orchestration): expose worker metrics HTTP endpoint for cross-process counter federation` (branch `fix/worker-metrics-http-exposure`). Docs commit appended afterwards.
+- **PR**: (pending — opened after §6 block commit per §0.5 C protocol)
+- **Gap**: Gap 1 (Event-Driven Automation) observability layer + Gap 7 (Alerting/Notification) 의 마지막 선행조건
+- **Scope**: Close §0 carry-over follow-up #6 (Medium priority): "Worker ↔ api `/metrics` 연합 부재". Worker-side trigger failures 가 Prometheus 에 scrapeable 하도록 prefect-worker 프로세스가 자체 `/metrics` HTTP endpoint 를 expose. 4 files changed + 2 new tests, 137 lines total.
+
+- **Problem (iteration 1, 2 의 counter prime + narrow-catch 아키텍처가 worker-side trigger site 에 대해서는 observable 하지 않았던 이유)**: Phase E-2 narrow-catch 아키텍처는 4개 worker-side trigger site (`ct_on_drift`, `rollback`, `al_on_medium_drift`, `ct_on_accumulation`) 에서 정상적으로 `record_trigger_failure(trigger_type, exc)` 를 호출하지만, 이 카운터 증가분은 **worker Python 프로세스의 in-process `prometheus_client.REGISTRY`** 에 저장된다. Prometheus 는 api 컨테이너의 `/metrics` 엔드포인트만 scrape 하는데, api 와 worker 는 **서로 다른 프로세스**이고 `prometheus_client.REGISTRY` 는 프로세스 로컬이기 때문에 api `/metrics` 는 worker-side 증가분을 영영 볼 수 없다. Iteration 1 의 `setup_metrics()` prime 과 iteration 2 의 webhook dep fix 는 유일하게 `ct_on_labeling` (webhook handler 가 api 프로세스 안에서 실행되기 때문) 에서만 end-to-end 로 동작했다. 나머지 4개 site 는 "narrow-catch 가 ERROR log 는 찍지만 Grafana 는 이를 절대 보지 못함" 이라는 observability gap 에 걸려 있었다.
+
+- **Changes** ([x] = 이번 블록에서 완료, [ ] = 후속):
+  - [x] `src/core/orchestration/flows/serve_all.py`: 신규 `WORKER_METRICS_PORT = 9092` 상수 + `_start_metrics_server(port: int = WORKER_METRICS_PORT) -> None` helper. Helper 는 `_KNOWN_TRIGGER_TYPES` 를 iterate 하면서 각 trigger_type × `error_class="none"` 에 대해 `.inc(0)` 으로 prime (api-side `setup_metrics` 와 동일 패턴), 그 다음 `prometheus_client.start_http_server(port)` 호출. `start_http_server` 는 내부적으로 `ThreadingHTTPServer` 를 daemon thread 로 띄우므로 non-blocking — `main()` 의 후속 `prefect.serve(*deployments)` 블로킹 호출과 공존. `main()` 의 `serve(*deployments)` 직전에 `_start_metrics_server()` 호출 삽입.
+  - [x] `docker-compose.yml`: `prefect-worker` 서비스에 `ports: ["127.0.0.1:${PREFECT_WORKER_METRICS_PORT:-9092}:9092"]` 추가. 호스트 루프백 바인딩만 허용 (API_PORT, GRAFANA_PORT 등 기존 내부 서비스 패턴 일치). Prometheus 는 이미 monitoring 네트워크 상의 DNS name `prefect-worker` 로 접근 가능하므로 host publishing 은 runtime E2E 검증용.
+  - [x] `configs/prometheus/prometheus.yml`: 5번째 scrape job `prefect-worker` 추가. `static_configs.targets: ["prefect-worker:9092"]`, `metrics_path: /metrics`. `honor_labels` 미사용 (direct scrape 이지 federation 이 아님). 기존 `api` job pattern mirror.
+  - [x] `docker/orchestration/Dockerfile`: `EXPOSE 9092` 라인 추가 (ENTRYPOINT 직전). Docker 네트워킹은 `EXPOSE` 없이도 동작하지만 문서화 목적 — api Dockerfile 의 `EXPOSE 8000` 컨벤션 일치.
+  - [x] `tests/unit/test_orchestration_serve_all.py`: 세 가지 변경.
+    1. **fixture 업데이트**: `serve_all_module` fixture 가 기존 `serve` monkeypatch 에 추가로 `_start_metrics_server` 를 `fake_start_metrics_server` no-op stub 으로 monkeypatch. 이전 4개 테스트가 `main()` 을 호출할 때마다 실제 `start_http_server(9092)` 가 실행되어 **두 번째 호출부터 `OSError: [Errno 48] Address already in use`** 로 깨지는 regression 을 해결. Fake stub 은 `captured["metrics_server_started"] = True` 를 기록해 새 테스트가 이 플래그로 호출 사실을 pin 할 수 있게 함.
+    2. **신규 `test_main_starts_worker_metrics_server`**: `module.main()` 호출 후 `captured.get("metrics_server_started") is True` assert. Helper 가 `main()` 에서 호출되는지 pin — 미래 regression 이 call site 를 조용히 제거하는 경우 즉시 fail.
+    3. **신규 `test_known_trigger_types_primed_in_metrics_server`**: fixture 가 monkeypatch 한 stub 을 우회하여 실제 `_start_metrics_server(port=free_port)` 를 실행. `socket.bind(("127.0.0.1", 0))` 로 ephemeral free port 를 할당해 port 9092 충돌 회피. `REGISTRY.get_sample_value(...)` 로 5개 trigger_type 이 모두 `error_class="none"` 으로 prime 됐는지 assert.
+
+- **Files changed** (5 files, +137 lines):
+  - 수정: `src/core/orchestration/flows/serve_all.py` (+57: helper + constant + call site), `tests/unit/test_orchestration_serve_all.py` (+64: fixture stub + 2 new tests), `docker-compose.yml` (+5: ports entry + comment), `configs/prometheus/prometheus.yml` (+10: scrape job), `docker/orchestration/Dockerfile` (+5: EXPOSE + comment)
+
+- **설계 원칙**:
+  - **Worker direct-scrape, not Pushgateway**: Pushgateway 는 service-level batch job (ephemeral 라이프타임) 에 적합. Prefect worker 는 `prefect.serve()` 블로킹 루프 로 long-running — long-running 프로세스에 direct scrape 가 더 idiomatic 하며 Pushgateway 의 "last value vs cumulative counter" gotcha 를 피한다. 기존 `pushgateway` 서비스는 다른 use case 를 위해 그대로 유지.
+  - **Prime in `_start_metrics_server`, not at module load**: Module-load prime 은 whichever process first imports 에 따라 behavior 가 달라진다 (api 에서 이미 iter 1 에서 이 이유로 `setup_metrics()` 안으로 이동함). 워커는 single-process 이므로 prime 을 helper 안에 두면 "endpoint 를 띄우는 함수가 endpoint 가 노출할 데이터도 prime 한다" 는 locality 가 보장된다.
+  - **Host port binding is env-tunable; container port is fixed**: 환경 변수 `PREFECT_WORKER_METRICS_PORT` 는 호스트 측 port 만 변경 가능. 컨테이너 내부 port (9092), Dockerfile `EXPOSE`, Python `WORKER_METRICS_PORT`, Prometheus `static_configs.targets` 네 곳 모두 9092 하드코딩으로 일관성 유지. 이것이 layering 의 "내부는 고정, 외부는 tunable" 패턴.
+  - **Test isolation via ephemeral port**: 신규 `test_known_trigger_types_primed_in_metrics_server` 가 `socket.bind(("127.0.0.1", 0))` 로 free port 를 할당해 port 9092 를 점유하지 않고 실제 helper 를 실행. Daemon thread leak 은 pytest 프로세스 종료 시 GC 로 수거되므로 수용 가능.
+
+- **Verification**:
+  - Unit: `uv run pytest tests/unit -q` → **337 passed** (baseline 335 + 2 신규: `test_main_starts_worker_metrics_server`, `test_known_trigger_types_primed_in_metrics_server`).
+  - Lint: `uv run ruff check src/core/orchestration/flows/serve_all.py tests/unit/test_orchestration_serve_all.py` → clean (I001 import order 자동 수정 1건 반영 후).
+  - Layer 3 runtime (docker compose build prefect-worker → force-recreate → restart prometheus):
+    1. **Worker /metrics directly visible**: `curl http://localhost:9092/metrics | grep -cE "^# (HELP|TYPE) orchestration_trigger_failure_total|^orchestration_trigger_failure_total"` → **7** (1 HELP + 1 TYPE + 5 primed zero samples on `error_class="none"`). Worker 프로세스가 자체 HTTP endpoint 를 띄웠고 prime 이 실행됐음을 증명.
+    2. **Prometheus scrape target healthy**: `/api/v1/targets?scrapePool=prefect-worker` → `http://prefect-worker:9092/metrics health=up lastError=none`.
+    3. **Prometheus query returns 5 worker-side series**: `query=orchestration_trigger_failure_total{job="prefect-worker"}` → 5 series (각 trigger_type 별 1개), 모두 `error_class="none"` value=0.
+    4. **Cross-job 쿼리**: `query=orchestration_trigger_failure_total` → **16 series across 3 jobs**: `api` (6: 5 primes + 1 historical `ct_on_labeling,error_class="LocalProtocolError"` value=2 from iter 2 runtime), `api-canary` (5 primes, separate multiproc mmap), `prefect-worker` (5 primes — 본 세션의 신규 expose). 기존 api job 은 displace 되지 않음 — 3개 distinct jobs 유지.
+    5. **Compose ports entry**: `docker compose ps prefect-worker` → `PORTS=127.0.0.1:9092->9092/tcp` 확인.
+    6. **Playwright (headed Chrome per memory)**: `http://localhost:9090/targets` 에 navigate, full-page screenshot `worker-metrics-iter3-prometheus-targets.png`. 5개 scrape pool 전체 visible (api, api-canary, **prefect-worker [NEW]**, prometheus, pushgateway) — `prefect-worker` row 가 `http://prefect-worker:9092/metrics` endpoint + `job="prefect-worker"` 라벨로 정상 표시.
+  - Quality gates (`/quality-pipeline`):
+    - Gate 1 (plan-verifier) **PASS** — 5/5 blocking items 구현됨, Layer 3 evidence 전체 수집됨.
+    - Gate 2 (pr-reviewer iter 1) **PASS** — 0 critical/high. Lazy-import discipline 보존 (`orchestration_counter` 가 여전히 FastAPI-free), silent failure 없음, port collision 없음 (9090/9091/9092 conflict clean), fork/thread safety OK (prefect worker 는 single-process 이므로 `PROMETHEUS_MULTIPROC_DIR` 불필요 — Optional style 제안 2건은 non-blocking 으로 skip).
+    - Gate 3 (runtime-verifier) **PASS** — 6/6 contracts 독립 재검증. Worker /metrics, Prometheus target health, 5 worker-side series, 3 distinct jobs, compose port 매핑, 기존 job 비-displacement 모두 통과.
+
+- **Unblocked**:
+  - **Phase E-3 Grafana alert rules on 5 trigger sites**: 이제 `orchestration_trigger_failure_total{error_class!="none"} > 0` 이 api, api-canary, prefect-worker 3개 job 모두에서 queryable. `configs/grafana/alerting/alerts.yml` 에 rule 을 정의하면 4개 worker-side site 의 실제 narrow-catch 실패 (ct_on_drift PrefectException, rollback MlflowException/HTTPError, al_on_medium_drift PrefectException, ct_on_accumulation PrefectException/ObjectNotFound) 가 모두 Grafana 에 도달. Phase E-3 의 마지막 구조적 선행조건 해제.
+  - **Prefect notification block 연동**: Grafana alert rule 정의 후 이미 구성된 4채널 (email/Slack/webhook/PagerDuty) 로 라우팅 — 이것이 iteration 4 의 primary wedge.
+  - **Worker-side observability 전반**: 앞으로 worker 에서 추가되는 모든 trigger site 는 `_KNOWN_TRIGGER_TYPES` 에 등록하고 `record_trigger_failure` 를 사용하기만 하면 자동으로 Prometheus scrapeable — 이번 세션이 설계한 compound engineering 접점.
+
+- **Remaining for parent phase (E-3)**: → §4 Phase E-3 Task Board. 잔여는 (1) Grafana alert rule 정의 + (2) 실제 알림 발화 E2E 검증.
+
+- **New follow-up tickets (carry-over to §0)**: 없음 — 본 세션은 §0 #6 을 close 하고 새 ticket 은 만들지 않는다. Iteration 4 의 primary wedge 는 이미 기존 "Prefect notification block + Grafana alert rule" ticket 으로 carry-over 되어 있음.
 
 ---
 
