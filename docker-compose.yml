@@ -260,6 +260,20 @@ services:
       PREFECT_API_URL: http://prefect-server:4200/api
       ADMIN_API_KEY: ${ADMIN_API_KEY:-}
       PROMETHEUS_MULTIPROC_DIR: /tmp/prom_multiproc
+      # ContinuousTrainingConfig (CT_ prefix) — the webhook handler in the
+      # api process (src/core/active_learning/labeling/webhook.py) reads
+      # these to reach Label Studio and Prefect. Previously only the
+      # prefect-worker service had these set; iter 5 closes that gap so
+      # the webhook happy path can actually fire run_deployment().
+      CT_LABEL_STUDIO_URL: http://label-studio:8080
+      CT_LABEL_STUDIO_API_KEY: ${AL_LABEL_STUDIO_API_KEY:-}
+      CT_LABEL_STUDIO_PROJECT_ID: ${AL_LABEL_STUDIO_PROJECT_ID:-1}
+      # Dev-environment tunable: lower the 50-annotation threshold so a
+      # minimally seeded Label Studio project (1 task + 1 annotation from
+      # scripts/seed_label_studio_project.py) passes the check and the
+      # webhook fires run_deployment. Must be >= 1 (Pydantic ge=1) —
+      # production should leave unset (defaults to 50).
+      CT_MIN_ANNOTATION_COUNT: ${CT_MIN_ANNOTATION_COUNT:-1}
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8000"
     networks:
@@ -447,6 +461,19 @@ services:
       POSTGRE_PASSWORD: ${POSTGRES_PASSWORD:-mlops_secret}
       POSTGRE_HOST: postgres
       POSTGRE_PORT: "5432"
+      # Admin identity for dev/E2E. Iteration 5 adds these so
+      # scripts/seed_label_studio_project.py can log in programmatically
+      # without manual UI signup. Label Studio 1.19 does not reliably
+      # auto-create the admin from these env vars alone, so the seed
+      # script falls back to a Django shell user create via docker exec.
+      LABEL_STUDIO_USERNAME: ${LABEL_STUDIO_USERNAME:-admin@localhost}
+      LABEL_STUDIO_PASSWORD: ${LABEL_STUDIO_PASSWORD:-admin1234}
+      # Enable legacy DRF Token authentication. Label Studio 1.19 disables
+      # it by default in favor of JWT, but LabelStudioBridge uses the
+      # ``Authorization: Token <hex>`` DRF scheme (src/core/active_learning/
+      # labeling/bridge.py:33), so for the dev E2E we re-enable legacy
+      # tokens. Production deployments should migrate to JWT instead.
+      LABEL_STUDIO_ENABLE_LEGACY_API_TOKEN: "true"
       # Local file serving disabled by default for security.
       # Enable in docker-compose.override.yml for development if needed.
       # LABEL_STUDIO_LOCAL_FILES_SERVING_ENABLED: "true"
